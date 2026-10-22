@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private Process? _game;
     private ContentKind _kind = ContentKind.Mod;
     private bool _suppressMemoryEvent;
+    private bool _suppressResolutionEvent;
 
     public MainWindow()
     {
@@ -62,7 +63,35 @@ public partial class MainWindow : Window
         _suppressMemoryEvent = false;
         MemoryText.Text = _services.Settings.MemoryMb + " МБ";
 
+        UpdateResolutionBox();
+
         _ = LoadInstancesAsync();
+    }
+
+    private void UpdateResolutionBox()
+    {
+        var items = ResolutionPresets.Select(p => $"{p.Width} × {p.Height}").ToList();
+        items.Add(CustomResolution);
+
+        _suppressResolutionEvent = true;
+        ResolutionBox.ItemsSource = items;
+
+        var current = _current is null ? "1280 × 720" : $"{_current.Width} × {_current.Height}";
+        if (items.Contains(current))
+        {
+            ResolutionBox.SelectedItem = current;
+            CustomResolutionPanel.IsVisible = false;
+        }
+        else
+        {
+            ResolutionBox.SelectedItem = CustomResolution;
+            CustomResolutionPanel.IsVisible = true;
+            WidthBox.Text = _current?.Width.ToString() ?? "1280";
+            HeightBox.Text = _current?.Height.ToString() ?? "720";
+        }
+
+        _suppressResolutionEvent = false;
+        ResolutionText.Text = current;
     }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
@@ -102,6 +131,12 @@ public partial class MainWindow : Window
         }
 
         var target = _instances.FirstOrDefault(i => i.Id == _services.Settings.LastInstanceId) ?? _instances[0];
+        if (target.Id != _services.Settings.LastInstanceId)
+        {
+            _services.Settings.LastInstanceId = target.Id;
+            _services.SaveSettings();
+        }
+
         InstanceList.SelectedItem = target;
     }
 
@@ -124,7 +159,7 @@ public partial class MainWindow : Window
         MemorySlider.Value = instance.MemoryMb;
         _suppressMemoryEvent = false;
         MemoryText.Text = instance.MemoryMb + " МБ";
-        ResolutionText.Text = $"{instance.Width} × {instance.Height}";
+        UpdateResolutionBox();
 
         RefreshInstalled();
     }
@@ -227,6 +262,62 @@ public partial class MainWindow : Window
         LogBox.Text = "";
     }
 
+    private static readonly (int Width, int Height)[] ResolutionPresets =
+    {
+        (1920, 1080),
+        (1600, 900),
+        (1366, 768),
+        (1280, 720),
+        (1024, 768),
+        (854, 480)
+    };
+
+    private const string CustomResolution = "Своя…";
+
+    private void OnResolutionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressResolutionEvent || ResolutionBox.SelectedItem is not string text)
+            return;
+
+        if (text == CustomResolution)
+        {
+            CustomResolutionPanel.IsVisible = true;
+            WidthBox.Text = _current?.Width.ToString() ?? "1280";
+            HeightBox.Text = _current?.Height.ToString() ?? "720";
+            return;
+        }
+
+        CustomResolutionPanel.IsVisible = false;
+        var parts = text.Split('×', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var width) || !int.TryParse(parts[1], out var height))
+            return;
+
+        ApplyResolution(width, height);
+    }
+
+    private void OnCustomResolutionKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+            return;
+
+        if (int.TryParse(WidthBox.Text, out var width) && int.TryParse(HeightBox.Text, out var height))
+            ApplyResolution(width, height);
+    }
+
+    private void ApplyResolution(int width, int height)
+    {
+        width = Math.Clamp(width, 640, 7680);
+        height = Math.Clamp(height, 480, 4320);
+
+        if (_current is not null)
+        {
+            _current.Width = width;
+            _current.Height = height;
+        }
+
+        ResolutionText.Text = $"{width} × {height}";
+    }
+
     private void OnMemoryChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
         if (_suppressMemoryEvent)
@@ -250,6 +341,8 @@ public partial class MainWindow : Window
         SetActive(SegMods, button == SegMods);
         SetActive(SegPacks, button == SegPacks);
         SetActive(SegShaders, button == SegShaders);
+
+        RefreshInstalled();
     }
 
     private static void SetActive(Button button, bool active)
@@ -304,6 +397,7 @@ public partial class MainWindow : Window
         if (_current is null || sender is not Button { DataContext: SearchItem item })
             return;
 
+        var kind = KindOf(item.Project.ProjectType);
         StatusText.Text = $"Установка {item.Title}...";
 
         try
@@ -318,10 +412,10 @@ public partial class MainWindow : Window
             }
 
             await _services.Content.InstallWithDependenciesAsync(
-                _current, version, _kind, _services.Modrinth, _cts.Token, contentProgress);
+                _current, version, kind, _services.Modrinth, _cts.Token, contentProgress);
 
             RefreshInstalled();
-            StatusText.Text = $"Установлено: {item.Title}"
+            StatusText.Text = $"Установлено: {item.Title} → {ContentService.FolderFor(kind)}"
                               + (_game is { HasExited: false } ? " (применится после перезапуска игры)" : "");
         }
         catch (Exception ex)
@@ -329,6 +423,14 @@ public partial class MainWindow : Window
             StatusText.Text = "Ошибка установки: " + ex.Message;
         }
     }
+
+    private static ContentKind KindOf(string projectType) => projectType switch
+    {
+        "mod" => ContentKind.Mod,
+        "resourcepack" => ContentKind.ResourcePack,
+        "shader" => ContentKind.Shader,
+        _ => ContentKind.Mod
+    };
 
     private void OnInstalledToggle(object? sender, RoutedEventArgs e)
     {
@@ -348,6 +450,15 @@ public partial class MainWindow : Window
 
     private void RefreshInstalled()
     {
+        var kindName = _kind switch
+        {
+            ContentKind.Mod => "МОДЫ",
+            ContentKind.ResourcePack => "РЕСУРСПАКИ",
+            _ => "ШЕЙДЕРЫ"
+        };
+
+        InstalledTitle.Text = $"УСТАНОВЛЕНО · {kindName}";
+
         if (_current is null)
         {
             InstalledList.ItemsSource = null;
@@ -355,8 +466,8 @@ public partial class MainWindow : Window
         }
 
         var items = _services.Content.ListInstalled(_current)
-            .OrderBy(i => i.Kind)
-            .ThenBy(i => i.FileName, StringComparer.OrdinalIgnoreCase)
+            .Where(i => i.Kind == _kind)
+            .OrderBy(i => i.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         InstalledList.ItemsSource = items;

@@ -74,7 +74,12 @@
                                 </StackPanel>
                                 <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                                     <TextBlock Text="РАЗРЕШЕНИЕ" Classes="section" />
-                                    <TextBlock x:Name="ResolutionText" Text="1280 × 720" FontWeight="SemiBold" />
+                                    <ComboBox x:Name="ResolutionBox" SelectionChanged="OnResolutionChanged" />
+                                    <TextBlock x:Name="ResolutionText" Text="1280 × 720" Classes="hint" />
+                                    <StackPanel x:Name="CustomResolutionPanel" Orientation="Horizontal" Spacing="6" IsVisible="False">
+                                        <TextBox x:Name="WidthBox" Width="70" PlaceholderText="ширина" KeyDown="OnCustomResolutionKey" />
+                                        <TextBox x:Name="HeightBox" Width="70" PlaceholderText="высота" KeyDown="OnCustomResolutionKey" />
+                                    </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
                                     <TextBlock Text="ПРОФИЛЬ" Classes="section" />
@@ -141,7 +146,7 @@
 
                         <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
                             <Grid RowDefinitions="Auto,*">
-                                <TextBlock Grid.Row="0" Text="УСТАНОВЛЕНО" Classes="section" Margin="0,0,0,10" />
+                                <TextBlock Grid.Row="0" x:Name="InstalledTitle" Text="УСТАНОВЛЕНО" Classes="section" Margin="0,0,0,10" />
                                 <ListBox Grid.Row="1" x:Name="InstalledList">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
