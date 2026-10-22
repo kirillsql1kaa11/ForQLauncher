@@ -2,6 +2,6 @@
   <PropertyGroup>
     <BaseIntermediateOutputPath>$(LOCALAPPDATA)\ForQLauncher\build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <BaseOutputPath>$(LOCALAPPDATA)\ForQLauncher\build\bin\$(MSBuildProjectName)\</BaseOutputPath>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
   </PropertyGroup>
 </Project>
