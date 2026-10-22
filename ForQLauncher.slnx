@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ForQ.App/ForQ.App.csproj" />
+    <Project Path="src/ForQ.Core/ForQ.Core.csproj" />
+  </Folder>
+</Solution>
