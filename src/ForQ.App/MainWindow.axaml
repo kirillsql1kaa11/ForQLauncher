@@ -130,7 +130,7 @@
                 <TabItem Header="Контент">
                     <Grid ColumnDefinitions="*,340" RowDefinitions="Auto,Auto,*">
 
-                        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8">
+                        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="0,0,0,8">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
                                 <Button x:Name="SegMods" Classes="segment active" Content="Моды" Click="OnKindChanged" />
                                 <Button x:Name="SegPacks" Classes="segment" Content="Ресурспаки" Click="OnKindChanged" />
@@ -138,7 +138,10 @@
                             </StackPanel>
                             <TextBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="Поиск по Modrinth" KeyDown="OnSearchKey" />
                             <Button Grid.Column="2" Content="Найти" Click="OnSearch" Margin="8,0,0,0" />
-                            <Button Grid.Column="3" x:Name="CheckUpdatesButton" Content="Обновления" Click="OnCheckUpdates"
+                            <Button Grid.Column="3" x:Name="ConflictsButton" Content="Конфликты" Click="OnCheckConflicts"
+                                    Classes="ghost" Margin="8,0,0,0"
+                                    ToolTip.Tip="Проверить несовместимости и дубликаты модов" />
+                            <Button Grid.Column="4" x:Name="CheckUpdatesButton" Content="Обновления" Click="OnCheckUpdates"
                                     Classes="ghost" Margin="8,0,0,0" />
                         </Grid>
 
@@ -151,7 +154,8 @@
                         <ListBox x:Name="ResultsList">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto"
+                                          Background="Transparent" Cursor="Hand" PointerReleased="OnResultClick">
                                         <Border Grid.RowSpan="3" Width="46" Height="46" CornerRadius="8" ClipToBounds="True"
                                                 Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Top">
                                             <Image Source="{Binding Icon}" Stretch="UniformToFill" />
@@ -162,7 +166,6 @@
                                                    TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" Height="34" />
                                         <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
                                         <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
-                                            <Button Content="Подробнее" Click="OnOpenDetails" FontSize="12" Padding="12,5" />
                                             <Button Content="Установить" Classes="accent" Click="OnInstallContent" FontSize="12" Padding="12,6"
                                                     IsVisible="{Binding NotInstalled}" />
                                             <Button Content="Установлено" Click="OnInstallContent" FontSize="12" Padding="12,6"
@@ -177,35 +180,42 @@
                         </Grid>
 
                         <Border Grid.Row="2" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
-                            <Grid RowDefinitions="Auto,*">
+                            <Grid RowDefinitions="Auto,Auto,*">
                                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
                                     <TextBlock x:Name="InstalledTitle" Text="УСТАНОВЛЕНО" Classes="section" VerticalAlignment="Center" />
                                     <Button Grid.Column="1" x:Name="UpdateAllButton" Content="Обновить все" Classes="ghost"
                                             FontSize="11" Padding="8,2" IsVisible="False" Click="OnUpdateAll" />
                                 </Grid>
-                                <ListBox Grid.Row="1" x:Name="InstalledList">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
-                                                <CheckBox Grid.RowSpan="2" Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}"
-                                                          Click="OnInstalledToggle" VerticalAlignment="Center" />
-                                                <Border Grid.RowSpan="2" Grid.Column="1" Width="30" Height="30" CornerRadius="7"
-                                                        ClipToBounds="True" Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Center">
-                                                    <Image Source="{Binding Icon}" Stretch="UniformToFill" />
-                                                </Border>
-                                                <TextBlock Grid.Column="2" Text="{Binding Title}" FontSize="12"
-                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="2" Grid.Row="1" Text="{Binding Subtitle}" Classes="hint"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <Button Grid.Column="3" Grid.RowSpan="2" Content="Обновить" FontSize="11"
-                                                        Padding="8,3" IsVisible="{Binding UpdateAvailable}" Click="OnUpdateOne"
-                                                        VerticalAlignment="Center" />
-                                                <Button Grid.Column="4" Grid.RowSpan="2" Content="{Binding DeleteLabel}" FontSize="10"
-                                                        Padding="6,3" Classes="ghost" Click="OnDeleteInstalled" VerticalAlignment="Center" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
+                                <TextBox Grid.Row="1" x:Name="InstalledSearchBox" PlaceholderText="Поиск в установленном"
+                                         TextChanged="OnInstalledSearchChanged" Margin="0,0,0,8" />
+                                <Grid Grid.Row="2">
+                                    <ListBox x:Name="InstalledList">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                                    <CheckBox Grid.RowSpan="2" Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}"
+                                                              Click="OnInstalledToggle" VerticalAlignment="Center" />
+                                                    <Border Grid.RowSpan="2" Grid.Column="1" Width="30" Height="30" CornerRadius="7"
+                                                            ClipToBounds="True" Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Center">
+                                                        <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                                    </Border>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Title}" FontSize="12"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="2" Grid.Row="1" Text="{Binding Subtitle}" Classes="hint"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <Button Grid.Column="3" Grid.RowSpan="2" Content="Обновить" FontSize="11"
+                                                            Padding="8,3" IsVisible="{Binding UpdateAvailable}" Click="OnUpdateOne"
+                                                            VerticalAlignment="Center" />
+                                                    <Button Grid.Column="4" Grid.RowSpan="2" Content="{Binding DeleteLabel}" FontSize="10"
+                                                            Padding="6,3" Classes="ghost" Click="OnDeleteInstalled" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock x:Name="InstalledEmptyText" Classes="hint" IsVisible="False" Text="Пока ничего не установлено"
+                                               TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" Margin="18" />
+                                </Grid>
                             </Grid>
                         </Border>
                     </Grid>
@@ -228,7 +238,8 @@
                         <ListBox x:Name="ModpackList">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto"
+                                          Background="Transparent" Cursor="Hand" PointerReleased="OnResultClick">
                                         <Border Grid.RowSpan="3" Width="52" Height="52" CornerRadius="9" ClipToBounds="True"
                                                 Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Top">
                                             <Image Source="{Binding Icon}" Stretch="UniformToFill" />
@@ -238,7 +249,6 @@
                                                    TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" Height="34" />
                                         <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
                                         <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
-                                            <Button Content="Подробнее" Click="OnOpenDetails" FontSize="12" Padding="12,5" />
                                             <Button Content="Установить" Classes="accent" Click="OnInstallModpack" FontSize="12" Padding="12,6" />
                                         </StackPanel>
                                     </Grid>

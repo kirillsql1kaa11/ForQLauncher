@@ -20,6 +20,7 @@ public sealed class AppServices : IDisposable
         Loaders = new LoaderService(Http);
         Modrinth = new ModrinthService(Http);
         Content = new ContentService(Http);
+        Conflicts = new ModConflictService(Content);
         Downloads = new DownloadManager(Http);
         Instances = new InstanceService(Root);
         Installer = new GameInstaller(Mojang, Assets, Runtime, Loaders, Downloads, Http);
@@ -39,6 +40,7 @@ public sealed class AppServices : IDisposable
     public LoaderService Loaders { get; }
     public ModrinthService Modrinth { get; }
     public ContentService Content { get; }
+    public ModConflictService Conflicts { get; }
     public DownloadManager Downloads { get; }
     public InstanceService Instances { get; }
     public GameInstaller Installer { get; }

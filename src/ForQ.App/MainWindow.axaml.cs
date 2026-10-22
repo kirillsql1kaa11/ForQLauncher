@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ForQ.Core;
 
 namespace ForQ.App;
@@ -56,6 +58,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ResultsList.AddHandler(KeyDownEvent, OnResultKey, RoutingStrategies.Tunnel);
+        ModpackList.AddHandler(KeyDownEvent, OnResultKey, RoutingStrategies.Tunnel);
         contentProgress = new Progress<DownloadState>(state =>
         {
             var done = state.Done / 1048576.0;
@@ -614,16 +618,52 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnOpenDetails(object? sender, RoutedEventArgs e)
+    private void OnInstalledSearchChanged(object? sender, TextChangedEventArgs e)
     {
-        if (sender is not Button { DataContext: SearchItem item })
+        if (!_ready)
             return;
 
+        RefreshInstalled();
+    }
+
+    private async void OnResultClick(object? sender, PointerReleasedEventArgs e)
+    {
+        if (e.InitialPressMouseButton != MouseButton.Left)
+            return;
+
+        if (sender is not Control { DataContext: SearchItem item } || IsInsideButton(e.Source))
+            return;
+
+        e.Handled = true;
+        await OpenDetailsAsync(item);
+    }
+
+    private async void OnResultKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+            return;
+
+        if (sender is not ListBox { SelectedItem: SearchItem item } || IsInsideButton(e.Source))
+            return;
+
+        e.Handled = true;
+        await OpenDetailsAsync(item);
+    }
+
+    private async Task OpenDetailsAsync(SearchItem item)
+    {
         var dialog = new ContentDetailsWindow(item.Project.Key, item.Project.ProjectType, _current);
         var installed = await dialog.ShowDialog<bool>(this);
 
         if (!installed)
             return;
+
+        if (item.Project.ProjectType == "modpack")
+        {
+            await LoadInstancesAsync();
+            StatusText.Text = "Сборка установлена";
+            return;
+        }
 
         item.Installed = true;
         UpdateSearchMarks();
@@ -632,6 +672,19 @@ public partial class MainWindow : Window
 
         foreach (var key in _updates.Where(pair => pair.Value.ProjectId == item.Project.Key).Select(pair => pair.Key).ToList())
             _updates.Remove(key);
+    }
+
+    private static bool IsInsideButton(object? source)
+    {
+        var current = source as Visual;
+        while (current is not null)
+        {
+            if (current is Button)
+                return true;
+            current = current.GetVisualParent();
+        }
+
+        return false;
     }
 
     private async void OnInstallContent(object? sender, RoutedEventArgs e)
@@ -692,6 +745,51 @@ public partial class MainWindow : Window
     }
 
     private async void OnCheckUpdates(object? sender, RoutedEventArgs e) => await CheckContentUpdatesAsync();
+
+    private async void OnCheckConflicts(object? sender, RoutedEventArgs e) => await CheckModConflictsAsync();
+
+    private async Task CheckModConflictsAsync()
+    {
+        if (_current is null)
+        {
+            StatusText.Text = "Сначала выберите профиль";
+            return;
+        }
+
+        var instance = _current;
+        var previous = ConflictsButton.Content;
+        ConflictsButton.IsEnabled = false;
+        ConflictsButton.Content = "Проверяю...";
+        StatusText.Text = "Проверяю конфликты модов...";
+
+        try
+        {
+            var report = await Task.Run(() => _services.Conflicts.Check(instance, _cts.Token), _cts.Token);
+            if (_current != instance)
+                return;
+
+            StatusText.Text = report.ModCount == 0
+                ? "В профиле нет включённых модов"
+                : report.HasConflicts
+                    ? $"Найдено проблем: {report.Conflicts.Count}"
+                    : $"Конфликтов не найдено · модов: {report.ModCount}";
+
+            var dialog = new ModConflictsWindow(instance.Name, report);
+            await dialog.ShowDialog(this);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Ошибка проверки конфликтов: " + ex.Message;
+        }
+        finally
+        {
+            ConflictsButton.Content = previous;
+            ConflictsButton.IsEnabled = true;
+        }
+    }
 
     private async Task CheckContentUpdatesAsync()
     {
@@ -828,11 +926,14 @@ public partial class MainWindow : Window
         };
 
         InstalledTitle.Text = $"УСТАНОВЛЕНО · {kindName}";
+        ConflictsButton.IsVisible = _kind == ContentKind.Mod;
 
         if (_current is null)
         {
             InstalledList.ItemsSource = null;
             UpdateAllButton.IsVisible = false;
+            InstalledEmptyText.Text = "Выберите профиль";
+            InstalledEmptyText.IsVisible = true;
             return;
         }
 
@@ -841,9 +942,16 @@ public partial class MainWindow : Window
             .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var tokens = (InstalledSearchBox.Text ?? "")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
         var view = new List<InstalledItem>();
         foreach (var content in contents)
         {
+            var searchable = $"{content.DisplayName}\n{content.FileName}\n{content.VersionNumber}\n{content.KindName}";
+            if (tokens.Length > 0 && !tokens.All(token => searchable.Contains(token, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
             var item = new InstalledItem(content);
             if (_updates.TryGetValue(content.FileName, out var update))
             {
@@ -856,6 +964,8 @@ public partial class MainWindow : Window
         }
 
         InstalledList.ItemsSource = view;
+        InstalledEmptyText.Text = contents.Count == 0 ? "Пока ничего не установлено" : "Ничего не найдено";
+        InstalledEmptyText.IsVisible = view.Count == 0;
         UpdateAllButton.IsVisible = _updates.Values.Any(update => update.Content.Kind == _kind);
 
         foreach (var item in view)

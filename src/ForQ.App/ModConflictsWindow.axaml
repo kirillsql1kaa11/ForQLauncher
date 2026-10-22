@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.ModConflictsWindow"
+        Title="Конфликты модов"
+        Width="640" Height="560" MinWidth="500" MinHeight="340"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Row="0" Margin="24,22,24,14" Spacing="5">
+            <TextBlock Text="КОНФЛИКТЫ МОДОВ" Classes="section" />
+            <TextBlock x:Name="SummaryText" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Classes="hint" TextWrapping="Wrap"
+                       Text="Учитываются только включённые моды из mods/. Несовместимости берутся из метаданных Fabric, Quilt, Forge и NeoForge." />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="24,0,24,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="ConflictList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource SurfaceBrush}" CornerRadius="10" Padding="14"
+                                    Margin="0,0,0,8">
+                                <StackPanel Spacing="5">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Details}" Classes="muted" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <TextBlock x:Name="EmptyText" Classes="muted" IsVisible="False" MaxWidth="380"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextAlignment="Center" TextWrapping="Wrap" />
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="24,14,24,20">
+            <TextBlock Grid.Column="0" Classes="hint" VerticalAlignment="Center" TextWrapping="Wrap"
+                       Text="Проверка не заменяет тестовый запуск игры." Margin="0,0,16,0" />
+            <Button Grid.Column="1" Content="Закрыть" Classes="ghost" Click="OnClose" />
+        </Grid>
+    </Grid>
+</Window>
