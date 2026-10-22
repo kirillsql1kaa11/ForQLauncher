@@ -11,6 +11,9 @@ public sealed class InstanceService
     public string Root => _root;
     public string InstancesDirectory => Path.Combine(_root, "instances");
     public string RuntimeDirectory => Path.Combine(_root, "runtime");
+    public string SharedDirectory => Path.Combine(_root, "shared");
+    public string SharedLibrariesDirectory => Path.Combine(SharedDirectory, "libraries");
+    public string SharedAssetsDirectory => Path.Combine(SharedDirectory, "assets");
     public string SettingsPath => Path.Combine(_root, "settings.json");
 
     public async Task<List<Instance>> LoadAsync()
@@ -62,8 +65,8 @@ public sealed class InstanceService
             ProfileId = loader == LoaderKind.Vanilla ? minecraftVersion : $"{loader.ToString().ToLowerInvariant()}-{loaderVersion}-{minecraftVersion}"
         };
 
-        PrepareFolders(instance);
         instance.RootPath = _root;
+        PrepareFolders(instance);
         await SaveAsync(instance);
         return instance;
     }

@@ -27,7 +27,8 @@ public sealed class GameInstaller
         _http = http;
     }
 
-    public async Task InstallVanillaAsync(Instance instance, Action<string>? log, CancellationToken ct)
+    public async Task InstallVanillaAsync(Instance instance, Action<string>? log, CancellationToken ct,
+        IProgress<DownloadState>? progress = null)
     {
         var versionId = instance.MinecraftVersion;
         var version = await _mojang.GetVersionAsync(versionId, ct);
@@ -37,7 +38,7 @@ public sealed class GameInstaller
         Directory.CreateDirectory(versionDirectory);
         await File.WriteAllTextAsync(Path.Combine(versionDirectory, versionId + ".json"), raw, ct);
 
-        var librariesDirectory = Path.Combine(instance.Folder, "libraries");
+        var librariesDirectory = Path.Combine(instance.RootPath, "shared", "libraries");
         var items = new List<DownloadItem>();
 
         if (version.Downloads.Client is { } client)
@@ -60,18 +61,19 @@ public sealed class GameInstaller
         }
 
         log?.Invoke($"Скачиваю файлы игры ({items.Count} шт.)...");
-        await _downloads.RunAsync(items, 8, null, ct);
+        await _downloads.RunAsync(items, 8, progress, ct);
 
-        await InstallAssetsAsync(instance, version, log, ct);
+        await InstallAssetsAsync(instance, version, log, ct, progress);
     }
 
-    public async Task InstallAssetsAsync(Instance instance, GameVersion version, Action<string>? log, CancellationToken ct)
+    public async Task InstallAssetsAsync(Instance instance, GameVersion version, Action<string>? log, CancellationToken ct,
+        IProgress<DownloadState>? progress = null)
     {
         if (version.AssetIndex is null)
             return;
 
         log?.Invoke("Скачиваю ресурсы и звуки...");
-        await _assets.InstallAsync(Path.Combine(instance.Folder, "assets"), version.AssetIndex, _downloads, null, ct);
+        await _assets.InstallAsync(Path.Combine(instance.RootPath, "shared", "assets"), version.AssetIndex, _downloads, progress, ct);
     }
 
     public async Task InstallLoaderAsync(Instance instance, Action<string>? log, CancellationToken ct)
@@ -96,7 +98,7 @@ public sealed class GameInstaller
         await File.WriteAllTextAsync(Path.Combine(versionDirectory, profile.Id + ".json"),
             JsonSerializer.Serialize(profile, Json.Options), ct);
 
-        var librariesDirectory = Path.Combine(instance.Folder, "libraries");
+        var librariesDirectory = Path.Combine(instance.RootPath, "shared", "libraries");
         var items = new List<DownloadItem>();
 
         foreach (var library in profile.Libraries)

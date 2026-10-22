@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly List<Instance> _instances = new();
     private readonly StringBuilder _log = new();
     private readonly CancellationTokenSource _cts = new();
+    private readonly Progress<DownloadState> contentProgress;
     private Instance? _current;
     private Process? _game;
     private ContentKind _kind = ContentKind.Mod;
@@ -33,6 +34,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        contentProgress = new Progress<DownloadState>(state =>
+        {
+            var done = state.Done / 1048576.0;
+            var total = state.Total / 1048576.0;
+            StatusText.Text = $"Загрузка {state.Name}: {done:F1} МБ из {total:F1} МБ";
+        });
         Opened += OnOpened;
         Closing += OnClosing;
     }
@@ -131,13 +138,20 @@ public partial class MainWindow : Window
 
         ShowOverlay("Создание профиля", "Подготовка...");
 
+        var progress = new Progress<DownloadState>(state =>
+        {
+            var done = state.Done / 1048576.0;
+            var total = state.Total / 1048576.0;
+            UpdateOverlayProgress(total > 0 ? $"{done:F0} МБ из {total:F0} МБ" : $"{done:F0} МБ");
+        });
+
         try
         {
             var instance = await _services.Instances.CreateAsync(
                 draft.Name, draft.MinecraftVersion, draft.Loader, draft.LoaderVersion);
 
             UpdateOverlay("Скачивание игры...");
-            await _services.Installer.InstallVanillaAsync(instance, UpdateOverlay, _cts.Token);
+            await _services.Installer.InstallVanillaAsync(instance, UpdateOverlay, _cts.Token, progress);
 
             if (draft.Loader != LoaderKind.Vanilla)
             {
@@ -255,6 +269,13 @@ public partial class MainWindow : Window
         }
 
         ResultsList.ItemsSource = null;
+
+        if (_kind == ContentKind.Mod && _current.Loader == LoaderKind.Vanilla)
+        {
+            StatusText.Text = "Для модов нужен профиль с загрузчиком: Fabric, Quilt или NeoForge";
+            return;
+        }
+
         StatusText.Text = "Поиск...";
 
         try
@@ -288,7 +309,7 @@ public partial class MainWindow : Window
         try
         {
             var version = await _services.Modrinth.PickVersionAsync(
-                item.Project.Id, _current.MinecraftVersion, LoaderTag(), item.Project.ProjectType, _cts.Token);
+                item.Project.Key, _current.MinecraftVersion, LoaderTag(), item.Project.ProjectType, _cts.Token);
 
             if (version is null)
             {
@@ -297,10 +318,11 @@ public partial class MainWindow : Window
             }
 
             await _services.Content.InstallWithDependenciesAsync(
-                _current, version, _kind, _services.Modrinth, _cts.Token);
+                _current, version, _kind, _services.Modrinth, _cts.Token, contentProgress);
 
             RefreshInstalled();
-            StatusText.Text = $"Установлено: {item.Title}";
+            StatusText.Text = $"Установлено: {item.Title}"
+                              + (_game is { HasExited: false } ? " (применится после перезапуска игры)" : "");
         }
         catch (Exception ex)
         {
@@ -386,5 +408,11 @@ public partial class MainWindow : Window
 
     private void UpdateOverlay(string status) => Dispatcher.UIThread.Post(() => OverlayStatus.Text = status);
 
-    private void HideOverlay() => Dispatcher.UIThread.Post(() => Overlay.IsVisible = false);
+    private void UpdateOverlayProgress(string text) => Dispatcher.UIThread.Post(() => OverlayProgress.Text = text);
+
+    private void HideOverlay() => Dispatcher.UIThread.Post(() =>
+    {
+        Overlay.IsVisible = false;
+        OverlayProgress.Text = "";
+    });
 }

@@ -108,8 +108,13 @@ public sealed class LaunchService
             }
         }
 
-        var librariesDirectory = Path.Combine(instance.Folder, "libraries");
+        var sharedLibraries = Path.Combine(instance.RootPath, "shared", "libraries");
+        var libraryRoots = new[] { sharedLibraries, Path.Combine(instance.Folder, "libraries") };
         var resolved = LibraryResolver.Resolve(libraries);
+
+        string? Locate(string relative) => libraryRoots
+            .Select(root => Path.Combine(root, relative))
+            .FirstOrDefault(File.Exists);
 
         var missing = new List<DownloadItem>();
         foreach (var library in resolved)
@@ -117,20 +122,18 @@ public sealed class LaunchService
             if (library.ClasspathFile is not null)
             {
                 var info = library.Library.Downloads?.Classpath ?? library.Library.Downloads?.Artifact;
-                if (info is not null)
+                if (info is not null && Locate(library.ClasspathFile) is null)
                 {
-                    var path = Path.Combine(librariesDirectory, library.ClasspathFile);
-                    if (!File.Exists(path))
-                        missing.Add(new DownloadItem(info.Url, path, info.Size, info.Sha1, library.Library.Name));
+                    missing.Add(new DownloadItem(info.Url, Path.Combine(sharedLibraries, library.ClasspathFile),
+                        info.Size, info.Sha1, library.Library.Name));
                 }
             }
 
-            if (library.NativeDownload is not null && library.NativeFile is not null)
+            if (library.NativeDownload is not null && library.NativeFile is not null
+                                                   && Locate(library.NativeFile) is null)
             {
-                var path = Path.Combine(librariesDirectory, library.NativeFile);
-                if (!File.Exists(path))
-                    missing.Add(new DownloadItem(library.NativeDownload.Url, path, library.NativeDownload.Size,
-                        library.NativeDownload.Sha1, library.Library.Name));
+                missing.Add(new DownloadItem(library.NativeDownload.Url, Path.Combine(sharedLibraries, library.NativeFile),
+                    library.NativeDownload.Size, library.NativeDownload.Sha1, library.Library.Name));
             }
         }
 
@@ -140,7 +143,7 @@ public sealed class LaunchService
             await _downloads.RunAsync(missing, 8, null, ct);
         }
 
-        var nativeDirectories = ExtractNatives(instance, resolved, librariesDirectory);
+        var nativeDirectories = ExtractNatives(instance, resolved, libraryRoots);
 
         var classpath = new List<string>();
         for (var i = chain.Count - 1; i >= 0; i--)
@@ -154,8 +157,8 @@ public sealed class LaunchService
         {
             if (library.ClasspathFile is null)
                 continue;
-            var path = Path.Combine(librariesDirectory, library.ClasspathFile);
-            if (File.Exists(path))
+            var path = Locate(library.ClasspathFile);
+            if (path is not null)
                 classpath.Add(path);
         }
 
@@ -170,7 +173,7 @@ public sealed class LaunchService
             ["auth_player_name"] = instance.Username,
             ["version_name"] = instance.ProfileId,
             ["game_directory"] = instance.Folder,
-            ["assets_root"] = Path.Combine(instance.Folder, "assets"),
+            ["assets_root"] = Path.Combine(instance.RootPath, "shared", "assets"),
             ["assets_index_name"] = assetIndex?.Id ?? "",
             ["auth_uuid"] = OfflineUuid(instance.Username),
             ["auth_access_token"] = "0",
@@ -183,7 +186,7 @@ public sealed class LaunchService
             ["resolution_width"] = instance.Width.ToString(),
             ["resolution_height"] = instance.Height.ToString(),
             ["natives_directory"] = nativesRoot,
-            ["library_directory"] = librariesDirectory,
+            ["library_directory"] = sharedLibraries,
             ["classpath"] = string.Join(Path.PathSeparator, classpath),
             ["classpath_separator"] = Path.PathSeparator.ToString(),
             ["classpath_separator_1"] = Path.PathSeparator.ToString(),
@@ -252,7 +255,7 @@ public sealed class LaunchService
         return process;
     }
 
-    public static IReadOnlyList<string> ExtractNatives(Instance instance, IEnumerable<ResolvedLibrary> libraries, string librariesDirectory)
+    public static IReadOnlyList<string> ExtractNatives(Instance instance, IEnumerable<ResolvedLibrary> libraries, IReadOnlyList<string> libraryRoots)
     {
         var directories = new List<string>();
 
@@ -261,8 +264,11 @@ public sealed class LaunchService
             if (library.NativeDownload is null || library.NativeFile is null)
                 continue;
 
-            var jar = Path.Combine(librariesDirectory, library.NativeFile);
-            if (!File.Exists(jar))
+            var jar = libraryRoots
+                .Select(root => Path.Combine(root, library.NativeFile!))
+                .FirstOrDefault(File.Exists);
+
+            if (jar is null)
                 continue;
 
             var target = Path.Combine(instance.Folder, "natives", library.Library.Name.Replace(':', '_'));

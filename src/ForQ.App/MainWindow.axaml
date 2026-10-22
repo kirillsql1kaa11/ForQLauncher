@@ -202,7 +202,8 @@
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" Width="360">
                 <TextBlock x:Name="OverlayTitle" Text="Установка" Classes="title" HorizontalAlignment="Center" />
                 <TextBlock x:Name="OverlayStatus" Classes="muted" TextAlignment="Center" TextWrapping="Wrap" />
-                <ProgressBar IsIndeterminate="True" />
+                <TextBlock x:Name="OverlayProgress" Classes="hint" TextAlignment="Center" />
+                <ProgressBar x:Name="OverlayBar" IsIndeterminate="True" />
             </StackPanel>
         </Border>
     </Grid>

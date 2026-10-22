@@ -40,8 +40,11 @@ public sealed class DownloadManager
                 var name = item.Name.Length > 0 ? item.Name : Path.GetFileName(item.Path);
                 try
                 {
-                    await _http.DownloadFileAsync(item.Url, item.Path, item.Size, item.Sha1, ct);
-                    done += item.Size;
+                    await _http.DownloadFileAsync(item.Url, item.Path, item.Size, item.Sha1, ct, bytes =>
+                    {
+                        var current = Interlocked.Add(ref done, bytes);
+                        progress?.Report(new DownloadState(name, current, total, false));
+                    });
                     progress?.Report(new DownloadState(name, done, total, true));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

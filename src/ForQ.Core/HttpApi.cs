@@ -39,7 +39,8 @@ public sealed class HttpApi : IDisposable
                ?? throw new InvalidDataException($"Пустой ответ: {url}");
     }
 
-    public async Task DownloadFileAsync(string url, string destination, long expectedSize, string expectedSha1, CancellationToken ct)
+    public async Task DownloadFileAsync(string url, string destination, long expectedSize, string expectedSha1, CancellationToken ct,
+        Action<long>? onBytes = null)
     {
         var directory = Path.GetDirectoryName(destination);
         if (!string.IsNullOrEmpty(directory))
@@ -61,7 +62,15 @@ public sealed class HttpApi : IDisposable
         await using (var input = await response.Content.ReadAsStreamAsync(ct))
         await using (var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16, true))
         {
-            await input.CopyToAsync(output, ct);
+            var buffer = new byte[1 << 16];
+            while (true)
+            {
+                var read = await input.ReadAsync(buffer, ct);
+                if (read == 0)
+                    break;
+                await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                onBytes?.Invoke(read);
+            }
             await output.FlushAsync(ct);
         }
 

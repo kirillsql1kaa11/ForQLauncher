@@ -13,17 +13,25 @@ public sealed class ContentService
         _ => "shaderpacks"
     };
 
-    public async Task<string> InstallAsync(Instance instance, ModrinthVersion version, ContentKind kind, CancellationToken ct)
+    public async Task<string> InstallAsync(Instance instance, ModrinthVersion version, ContentKind kind, CancellationToken ct,
+        IProgress<DownloadState>? progress = null)
     {
         var file = ModrinthService.PrimaryFile(version);
         var directory = Path.Combine(instance.Folder, FolderFor(kind));
         Directory.CreateDirectory(directory);
 
         var destination = Path.Combine(directory, file.Filename);
-        await _http.DownloadFileAsync(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), ct);
+        var downloaded = 0L;
+        await _http.DownloadFileAsync(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), ct, bytes =>
+        {
+            var current = Interlocked.Add(ref downloaded, bytes);
+            progress?.Report(new DownloadState(file.Filename, current, file.Size, false));
+        });
 
         if (kind == ContentKind.ResourcePack)
             GameOptions.SetPackEnabled(instance.OptionsPath, file.Filename, true);
+        else if (kind == ContentKind.Shader)
+            GameOptions.SetShader(instance.OptionsPath, file.Filename);
 
         return destination;
     }
@@ -33,13 +41,22 @@ public sealed class ContentService
         ModrinthVersion version,
         ContentKind kind,
         ModrinthService modrinth,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<DownloadState>? progress = null)
     {
-        await InstallAsync(instance, version, kind, ct);
+        await InstallAsync(instance, version, kind, ct, progress);
+
+        var projectType = kind switch
+        {
+            ContentKind.Mod => "mod",
+            ContentKind.ResourcePack => "resourcepack",
+            _ => "shader"
+        };
 
         foreach (var dependency in version.Dependencies.Where(d => d.DependencyType == "required" && d.ProjectId is not null))
         {
-            var dependencyVersion = await modrinth.PickVersionAsync(dependency.ProjectId!, instance.MinecraftVersion, LoaderTag(instance), ct);
+            var dependencyVersion = await modrinth.PickVersionAsync(
+                dependency.ProjectId!, instance.MinecraftVersion, LoaderTag(instance), projectType, ct);
             if (dependencyVersion is null)
                 continue;
 
@@ -54,7 +71,6 @@ public sealed class ContentService
             await _http.DownloadFileAsync(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), ct);
         }
     }
-
     private static string? LoaderTag(Instance instance) => instance.Loader switch
     {
         LoaderKind.Fabric => "fabric",

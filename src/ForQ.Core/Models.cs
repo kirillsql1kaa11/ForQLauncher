@@ -250,6 +250,7 @@ public sealed class ModrinthSearchResponse
 
 public sealed class ModrinthProject
 {
+    [JsonPropertyName("project_id")] public string ProjectId { get; set; } = "";
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     [JsonPropertyName("slug")] public string Slug { get; set; } = "";
     [JsonPropertyName("title")] public string Title { get; set; } = "";
@@ -262,6 +263,8 @@ public sealed class ModrinthProject
     [JsonPropertyName("loaders")] public List<string> Loaders { get; set; } = new();
     [JsonPropertyName("game_versions")] public List<string> GameVersions { get; set; } = new();
     [JsonPropertyName("author")] public string? Author { get; set; }
+
+    [JsonIgnore] public string Key => string.IsNullOrEmpty(ProjectId) ? Id : ProjectId;
 }
 
 public sealed class ModrinthVersion
