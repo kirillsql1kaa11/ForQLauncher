@@ -85,7 +85,6 @@ public partial class MainWindow : Window
         JavaPathBox.Text = _services.Settings.JavaPath ?? "";
         RootPathBox.Text = _services.Root;
         ThreadsBox.Text = _services.Settings.DownloadThreads.ToString();
-        TokenBox.Text = _services.Settings.GitHubToken ?? "";
         AutoUpdateCheck.IsChecked = _services.Settings.AutoCheckUpdates;
 
         _suppressMemoryEvent = true;
@@ -1166,11 +1165,11 @@ public partial class MainWindow : Window
     {
         StatusText.Text = silent ? "Готово" : "Проверяю обновления лаунчера...";
 
-        var release = await _services.Updates.GetLatestAsync(_services.Settings.GitHubToken, _cts.Token);
+        var release = await _services.Updates.GetLatestAsync(_cts.Token);
         if (release is null)
         {
             if (!silent)
-                StatusText.Text = "Не удалось проверить: для приватного репозитория нужен токен GitHub в настройках";
+                StatusText.Text = "Не удалось проверить обновления. Проверьте подключение к интернету.";
             return;
         }
 
@@ -1216,7 +1215,7 @@ public partial class MainWindow : Window
         try
         {
             var path = await _services.Updates.DownloadAsync(
-                _pendingAsset, _services.Settings.GitHubToken, progress, _cts.Token);
+                _pendingAsset, progress, _cts.Token);
 
             HideOverlay();
             AppendLog("Лаунчер перезапустится с новой версией.");
@@ -1257,7 +1256,6 @@ public partial class MainWindow : Window
             : SettingsUsernameBox.Text.Trim();
         _services.Settings.BlockTelemetry = TelemetryCheck.IsChecked ?? true;
         _services.Settings.JavaPath = string.IsNullOrWhiteSpace(JavaPathBox.Text) ? null : JavaPathBox.Text.Trim();
-        _services.Settings.GitHubToken = string.IsNullOrWhiteSpace(TokenBox.Text) ? null : TokenBox.Text.Trim();
         _services.Settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked ?? true;
 
         if (int.TryParse(ThreadsBox.Text, out var threads) && threads is >= 1 and <= 16)

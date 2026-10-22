@@ -28,15 +28,14 @@ public sealed class HttpApi : IDisposable
     private const int MaxAttempts = 3;
 
     public async Task<string> GetStringAsync(string url, CancellationToken ct)
-        => await GetStringAsync(url, ct, null);
-
-    private static HttpRequestMessage CreateGet(string url, string? bearerToken)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        if (!string.IsNullOrWhiteSpace(bearerToken))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken.Trim());
-        return request;
+        using var response = await SendGetAsync(url, HttpCompletionOption.ResponseContentRead, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(ct);
     }
+
+    private static HttpRequestMessage CreateGet(string url)
+        => new(HttpMethod.Get, url);
 
     private static bool IsTransient(Exception ex)
     {
@@ -50,12 +49,11 @@ public sealed class HttpApi : IDisposable
         return code == 408 || code == 429 || code >= 500;
     }
 
-    private async Task<HttpResponseMessage> SendGetAsync(string url, HttpCompletionOption option, string? bearerToken,
-        CancellationToken ct)
+    private async Task<HttpResponseMessage> SendGetAsync(string url, HttpCompletionOption option, CancellationToken ct)
     {
         for (var attempt = 1; ; attempt++)
         {
-            using var request = CreateGet(url, bearerToken);
+            using var request = CreateGet(url);
             try
             {
                 return await _client.SendAsync(request, option, ct);
@@ -71,23 +69,9 @@ public sealed class HttpApi : IDisposable
         }
     }
 
-    public async Task<string> GetStringAsync(string url, CancellationToken ct, string? bearerToken)
-    {
-        using var response = await SendGetAsync(url, HttpCompletionOption.ResponseContentRead, bearerToken, ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(ct);
-    }
-
     public async Task<T> GetJsonAsync<T>(string url, CancellationToken ct)
     {
         var json = await GetStringAsync(url, ct);
-        return System.Text.Json.JsonSerializer.Deserialize<T>(json, Json.Options)
-               ?? throw new InvalidDataException($"Пустой ответ: {url}");
-    }
-
-    public async Task<T> GetJsonAsync<T>(string url, CancellationToken ct, string? bearerToken)
-    {
-        var json = await GetStringAsync(url, ct, bearerToken);
         return System.Text.Json.JsonSerializer.Deserialize<T>(json, Json.Options)
                ?? throw new InvalidDataException($"Пустой ответ: {url}");
     }
@@ -122,13 +106,13 @@ public sealed class HttpApi : IDisposable
 
     public async Task<byte[]> GetBytesAsync(string url, CancellationToken ct)
     {
-        using var response = await SendGetAsync(url, HttpCompletionOption.ResponseContentRead, null, ct);
+        using var response = await SendGetAsync(url, HttpCompletionOption.ResponseContentRead, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
     public async Task DownloadFileAsync(string url, string destination, long expectedSize, string expectedSha1, CancellationToken ct,
-        Action<long>? onBytes = null, string? bearerToken = null)
+        Action<long>? onBytes = null)
     {
         var directory = Path.GetDirectoryName(destination);
         if (!string.IsNullOrEmpty(directory))
@@ -148,7 +132,7 @@ public sealed class HttpApi : IDisposable
         {
             try
             {
-                await DownloadOnceAsync(url, destination, expectedSha1, ct, onBytes, bearerToken);
+                await DownloadOnceAsync(url, destination, expectedSha1, ct, onBytes);
                 return;
             }
             catch (Exception ex) when (attempt < MaxAttempts && IsTransient(ex) && !ct.IsCancellationRequested)
@@ -169,9 +153,9 @@ public sealed class HttpApi : IDisposable
     }
 
     private async Task DownloadOnceAsync(string url, string destination, string expectedSha1, CancellationToken ct,
-        Action<long>? onBytes, string? bearerToken)
+        Action<long>? onBytes)
     {
-        using var request = CreateGet(url, bearerToken);
+        using var request = CreateGet(url);
         using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 

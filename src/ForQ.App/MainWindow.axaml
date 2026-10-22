@@ -280,12 +280,6 @@
                             <StackPanel Spacing="8">
                                 <TextBlock Text="ОБНОВЛЕНИЯ" Classes="section" />
                                 <CheckBox x:Name="AutoUpdateCheck" Content="Проверять обновления лаунчера при запуске" />
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Токен GitHub (нужен, пока репозиторий приватный)" Classes="muted" />
-                                    <TextBox x:Name="TokenBox" PasswordChar="•" PlaceholderText="ghp_… или github_pat_…" />
-                                    <TextBlock Classes="hint" TextWrapping="Wrap"
-                                               Text="Токен хранится только в settings.json на этом компьютере и нужен лишь для чтения релизов." />
-                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button Content="Проверить обновления" Classes="ghost" Click="OnCheckLauncherUpdate" />
                                     <Button Content="Скачать вручную" Classes="ghost" Click="OnOpenReleasePage" />

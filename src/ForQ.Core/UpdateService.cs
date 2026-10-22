@@ -11,12 +11,12 @@ public sealed class UpdateService
 
     public UpdateService(HttpApi http) => _http = http;
 
-    public async Task<GitHubRelease?> GetLatestAsync(string? token, CancellationToken ct)
+    public async Task<GitHubRelease?> GetLatestAsync(CancellationToken ct)
     {
         try
         {
             return await _http.GetJsonAsync<GitHubRelease>(
-                $"https://api.github.com/repos/{Repository}/releases/latest", ct, token);
+                $"https://api.github.com/repos/{Repository}/releases/latest", ct);
         }
         catch (HttpRequestException)
         {
@@ -60,20 +60,16 @@ public sealed class UpdateService
             : new[] { 0 };
     }
 
-    public async Task<string> DownloadAsync(GitHubAsset asset, string? token, IProgress<DownloadState>? progress, CancellationToken ct)
+    public async Task<string> DownloadAsync(GitHubAsset asset, IProgress<DownloadState>? progress, CancellationToken ct)
     {
         var destination = Path.Combine(Path.GetTempPath(), "ForQLauncher", "update", asset.Name);
         var done = 0L;
 
-        var url = string.IsNullOrWhiteSpace(token) || asset.Id == 0
-            ? asset.BrowserDownloadUrl
-            : $"https://api.github.com/repos/{Repository}/releases/assets/{asset.Id}";
-
-        await _http.DownloadFileAsync(url, destination, asset.Size, "", ct, bytes =>
+        await _http.DownloadFileAsync(asset.BrowserDownloadUrl, destination, asset.Size, "", ct, bytes =>
         {
             var current = Interlocked.Add(ref done, bytes);
             progress?.Report(new DownloadState(asset.Name, current, asset.Size, false));
-        }, string.IsNullOrWhiteSpace(token) ? null : token);
+        });
 
         return destination;
     }

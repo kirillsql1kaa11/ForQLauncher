@@ -52,7 +52,6 @@ public sealed class AppSettings
     [JsonPropertyName("downloadThreads")] public int DownloadThreads { get; set; } = 8;
     [JsonPropertyName("lastInstanceId")] public string LastInstanceId { get; set; } = "";
     [JsonPropertyName("rootPath")] public string? RootPath { get; set; }
-    [JsonPropertyName("githubToken")] public string? GitHubToken { get; set; }
     [JsonPropertyName("autoCheckUpdates")] public bool AutoCheckUpdates { get; set; } = true;
 }
 
