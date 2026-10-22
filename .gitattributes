@@ -6,3 +6,5 @@
 *.props text
 *.json text
 *.md text
+*.png binary
+*.ico binary
