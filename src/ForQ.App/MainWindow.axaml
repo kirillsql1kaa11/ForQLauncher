@@ -3,13 +3,13 @@
         x:Class="ForQ.App.MainWindow"
         Title="ForQ Launcher"
         Icon="/icon.ico"
-        Width="1120" Height="740" MinWidth="940" MinHeight="620"
+        Width="1180" Height="800" MinWidth="1000" MinHeight="660"
         WindowStartupLocation="CenterScreen">
 
     <Grid ColumnDefinitions="268,*">
 
         <Border Grid.Column="0" Background="#12161D" BorderBrush="#1E242E" BorderThickness="0,0,1,0">
-            <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16,20,14,18">
+            <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="16,20,14,18">
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,22">
                     <Border Width="30" Height="30" CornerRadius="9" Background="#5DBB63">
                         <Grid>
@@ -30,7 +30,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Spacing="2">
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Classes="muted">
                                     <TextBlock.Text>
                                         <MultiBinding StringFormat="{}{0} · {1}">
@@ -46,12 +46,14 @@
 
                 <Button Grid.Row="3" Classes="ghost" Content="+  Новый профиль"
                         Click="OnNewInstance" HorizontalAlignment="Stretch" Margin="0,12,0,0" />
+
+                <TextBlock Grid.Row="4" x:Name="VersionText" Classes="hint" Margin="2,10,0,0" Text="Версия" />
             </Grid>
         </Border>
 
-        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*,Auto">
 
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="26,20,26,16">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="26,20,26,14">
                 <StackPanel Grid.Column="0" Spacing="2">
                     <TextBlock x:Name="TitleText" Text="Нет профиля" Classes="title" />
                     <TextBlock x:Name="SubtitleText" Classes="muted" Text="Создайте профиль, чтобы начать" />
@@ -62,7 +64,20 @@
                 </StackPanel>
             </Grid>
 
-            <TabControl x:Name="Tabs" Grid.Row="1" Margin="26,0,26,0">
+            <Border Grid.Row="1" x:Name="UpdateBanner" IsVisible="False" Background="#17251A"
+                    BorderBrush="#2A4030" BorderThickness="1" CornerRadius="10" Padding="14,10"
+                    Margin="26,0,26,12">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock x:Name="UpdateTitle" Text="Доступно обновление" FontWeight="SemiBold" />
+                        <TextBlock x:Name="UpdateText" Classes="hint" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Скачать" Classes="accent" Click="OnInstallUpdate" />
+                    <Button Grid.Column="2" Content="Позже" Classes="ghost" Click="OnDismissUpdate" />
+                </Grid>
+            </Border>
+
+            <TabControl x:Name="Tabs" Grid.Row="2" Margin="26,0,26,0" SelectionChanged="OnTabChanged">
 
                 <TabItem Header="Игра">
                     <Grid RowDefinitions="Auto,*,Auto">
@@ -70,7 +85,11 @@
                             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
                                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                                     <TextBlock Text="ПАМЯТЬ" Classes="section" />
-                                    <TextBlock x:Name="MemoryText" Text="4096 МБ" FontWeight="SemiBold" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock x:Name="MemoryText" Text="4096 МБ" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Button Content="Подобрать" Classes="ghost" FontSize="11" Padding="8,2" Click="OnRecommendMemory" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="MemoryHint" Classes="hint" />
                                 </StackPanel>
                                 <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                                     <TextBlock Text="РАЗРЕШЕНИЕ" Classes="section" />
@@ -83,7 +102,7 @@
                                 </StackPanel>
                                 <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
                                     <TextBlock Text="ПРОФИЛЬ" Classes="section" />
-                                    <TextBlock x:Name="ProfileInfoText" Text="—" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="ProfileInfoText" Text="—" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                                 <Slider x:Name="MemorySlider" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0"
                                         Minimum="1024" Maximum="16384" TickFrequency="512" IsSnapToTickEnabled="True"
@@ -109,53 +128,71 @@
                 </TabItem>
 
                 <TabItem Header="Контент">
-                    <Grid ColumnDefinitions="*,300" RowDefinitions="Auto,*">
+                    <Grid ColumnDefinitions="*,340" RowDefinitions="Auto,Auto,*">
 
-                        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,12">
+                        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
                                 <Button x:Name="SegMods" Classes="segment active" Content="Моды" Click="OnKindChanged" />
                                 <Button x:Name="SegPacks" Classes="segment" Content="Ресурспаки" Click="OnKindChanged" />
                                 <Button x:Name="SegShaders" Classes="segment" Content="Шейдеры" Click="OnKindChanged" />
                             </StackPanel>
-                            <TextBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="Поиск по Modrinth" />
+                            <TextBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="Поиск по Modrinth" KeyDown="OnSearchKey" />
                             <Button Grid.Column="2" Content="Найти" Click="OnSearch" Margin="8,0,0,0" />
+                            <Button Grid.Column="3" x:Name="CheckUpdatesButton" Content="Обновления" Click="OnCheckUpdates"
+                                    Classes="ghost" Margin="8,0,0,0" />
                         </Grid>
 
-                        <ListBox Grid.Row="1" Grid.Column="0" x:Name="ResultsList" Margin="0,0,12,0">
+                        <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <TextBlock Grid.Column="0" x:Name="FilterText" Classes="hint" Text="Выберите профиль" />
+                            <TextBlock Grid.Column="1" x:Name="SearchCountText" Classes="hint" />
+                        </Grid>
+
+                        <ListBox Grid.Row="2" Grid.Column="0" x:Name="ResultsList" Margin="0,0,12,0">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Title}" FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding Description}" Classes="muted"
-                                                   TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" Margin="0,2,10,0" />
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="hint" Margin="0,4,10,0">
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="{}{0} · {1} скачиваний">
-                                                    <Binding Path="Author" />
-                                                    <Binding Path="Downloads" />
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
-                                        <Button Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" Content="Установить"
-                                                VerticalAlignment="Center" Click="OnInstallContent" />
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto">
+                                        <Border Grid.RowSpan="3" Width="46" Height="46" CornerRadius="8" ClipToBounds="True"
+                                                Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Top">
+                                            <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Description}" Classes="muted"
+                                                   TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" Height="34" />
+                                        <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
+                                        <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
+                                            <Button Content="Подробнее" Click="OnOpenDetails" FontSize="12" Padding="12,5" />
+                                            <Button Content="Установить" Classes="accent" Click="OnInstallContent" FontSize="12" Padding="12,6" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
+                        <Border Grid.Row="2" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
                             <Grid RowDefinitions="Auto,*">
-                                <TextBlock Grid.Row="0" x:Name="InstalledTitle" Text="УСТАНОВЛЕНО" Classes="section" Margin="0,0,0,10" />
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                                    <TextBlock x:Name="InstalledTitle" Text="УСТАНОВЛЕНО" Classes="section" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" x:Name="UpdateAllButton" Content="Обновить все" Classes="ghost"
+                                            FontSize="11" Padding="8,2" IsVisible="False" Click="OnUpdateAll" />
+                                </Grid>
                                 <ListBox Grid.Row="1" x:Name="InstalledList">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
-                                                <CheckBox Grid.Row="0" Grid.Column="0" IsChecked="{Binding Enabled}"
-                                                          Click="OnInstalledToggle" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding FileName}" FontSize="12"
+                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                                <CheckBox Grid.RowSpan="2" Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}"
+                                                          Click="OnInstalledToggle" VerticalAlignment="Center" />
+                                                <Border Grid.RowSpan="2" Grid.Column="1" Width="30" Height="30" CornerRadius="7"
+                                                        ClipToBounds="True" Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Center">
+                                                    <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                                </Border>
+                                                <TextBlock Grid.Column="2" Text="{Binding Title}" FontSize="12"
                                                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="hint" Text="{Binding KindName}" />
+                                                <TextBlock Grid.Column="2" Grid.Row="1" Text="{Binding Subtitle}" Classes="hint"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="3" Grid.RowSpan="2" Content="Обновить" FontSize="11"
+                                                        Padding="8,3" IsVisible="{Binding UpdateAvailable}" Click="OnUpdateOne"
+                                                        VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -165,9 +202,45 @@
                     </Grid>
                 </TabItem>
 
+                <TabItem Header="Модпаки">
+                    <Grid RowDefinitions="Auto,Auto,*">
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <TextBox Grid.Column="0" x:Name="ModpackSearchBox" PlaceholderText="Поиск сборок на Modrinth" KeyDown="OnModpackSearchKey" />
+                            <Button Grid.Column="1" Content="Найти" Click="OnSearchModpacks" Margin="8,0,0,0" />
+                        </Grid>
+
+                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <TextBlock Grid.Column="0" Classes="hint"
+                                       Text="Сборка ставится отдельным профилем: версия игры, загрузчик и моды подтягиваются автоматически" />
+                            <TextBlock Grid.Column="1" x:Name="ModpackCountText" Classes="hint" />
+                        </Grid>
+
+                        <ListBox Grid.Row="2" x:Name="ModpackList">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto">
+                                        <Border Grid.RowSpan="3" Width="52" Height="52" CornerRadius="9" ClipToBounds="True"
+                                                Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Top">
+                                            <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Description}" Classes="muted"
+                                                   TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" Height="34" />
+                                        <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
+                                        <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
+                                            <Button Content="Подробнее" Click="OnOpenDetails" FontSize="12" Padding="12,5" />
+                                            <Button Content="Установить" Classes="accent" Click="OnInstallModpack" FontSize="12" Padding="12,6" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </TabItem>
+
                 <TabItem Header="Настройки">
                     <ScrollViewer>
-                        <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="18">
+                        <StackPanel MaxWidth="600" HorizontalAlignment="Left" Spacing="18">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="ОБЩИЕ" Classes="section" />
                                 <StackPanel Spacing="6">
@@ -178,6 +251,21 @@
                                 <StackPanel Spacing="6">
                                     <TextBlock Text="Свой Java (необязательно)" Classes="muted" />
                                     <TextBox x:Name="JavaPathBox" PlaceholderText="C:\...\bin\java.exe" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="ОБНОВЛЕНИЯ" Classes="section" />
+                                <CheckBox x:Name="AutoUpdateCheck" Content="Проверять обновления лаунчера при запуске" />
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Токен GitHub (нужен, пока репозиторий приватный)" Classes="muted" />
+                                    <TextBox x:Name="TokenBox" PasswordChar="•" PlaceholderText="ghp_… или github_pat_…" />
+                                    <TextBlock Classes="hint" TextWrapping="Wrap"
+                                               Text="Токен хранится только в settings.json на этом компьютере и нужен лишь для чтения релизов." />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Проверить обновления" Classes="ghost" Click="OnCheckLauncherUpdate" />
+                                    <Button Content="Скачать вручную" Classes="ghost" Click="OnOpenReleasePage" />
                                 </StackPanel>
                             </StackPanel>
 
@@ -200,11 +288,11 @@
 
             </TabControl>
 
-            <TextBlock Grid.Row="2" x:Name="StatusText" Classes="hint" Margin="26,10,26,16" Text="Готово" />
+            <TextBlock Grid.Row="3" x:Name="StatusText" Classes="hint" Margin="26,10,26,16" Text="Готово" />
         </Grid>
 
         <Border x:Name="Overlay" Grid.ColumnSpan="2" IsVisible="False" Background="#E60E1116">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" Width="360">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" Width="380">
                 <TextBlock x:Name="OverlayTitle" Text="Установка" Classes="title" HorizontalAlignment="Center" />
                 <TextBlock x:Name="OverlayStatus" Classes="muted" TextAlignment="Center" TextWrapping="Wrap" />
                 <TextBlock x:Name="OverlayProgress" Classes="hint" TextAlignment="Center" />

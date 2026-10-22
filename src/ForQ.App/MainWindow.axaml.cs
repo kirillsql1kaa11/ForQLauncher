@@ -3,34 +3,46 @@ using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using ForQ.Core;
 
 namespace ForQ.App;
 
-public sealed class SearchItem
-{
-    public SearchItem(ModrinthProject project) => Project = project;
-
-    public ModrinthProject Project { get; }
-    public string Title => Project.Title;
-    public string Description => Project.Description;
-    public string Author => Project.Author ?? "неизвестно";
-    public string Downloads => Project.Downloads.ToString("N0");
-}
-
 public partial class MainWindow : Window
 {
+    private static readonly (int Width, int Height)[] ResolutionPresets =
+    {
+        (1920, 1080),
+        (1600, 900),
+        (1366, 768),
+        (1280, 720),
+        (1024, 768),
+        (854, 480)
+    };
+
+    private const string CustomResolution = "Своя…";
+
     private readonly AppServices _services = AppServices.Current;
     private readonly List<Instance> _instances = new();
     private readonly StringBuilder _log = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly Progress<DownloadState> contentProgress;
+    private readonly Dictionary<string, ContentUpdate> _updates = new(StringComparer.OrdinalIgnoreCase);
     private Instance? _current;
     private Process? _game;
     private ContentKind _kind = ContentKind.Mod;
     private bool _suppressMemoryEvent;
     private bool _suppressResolutionEvent;
+    private int _searchGeneration;
+    private int _modpackGeneration;
+    private bool _resultsLoaded;
+    private bool _modpacksLoaded;
+    private string _resultsInstanceId = "";
+    private ContentKind _resultsKind = ContentKind.Mod;
+    private string _resultsQuery = "";
+    private GitHubAsset? _pendingAsset;
+    private bool _ready;
 
     public MainWindow()
     {
@@ -39,7 +51,9 @@ public partial class MainWindow : Window
         {
             var done = state.Done / 1048576.0;
             var total = state.Total / 1048576.0;
-            StatusText.Text = $"Загрузка {state.Name}: {done:F1} МБ из {total:F1} МБ";
+            StatusText.Text = total > 0
+                ? $"Загрузка {state.Name}: {done:F1} МБ из {total:F1} МБ"
+                : $"Загрузка {state.Name}: {done:F1} МБ";
         });
         Opened += OnOpened;
         Closing += OnClosing;
@@ -51,47 +65,34 @@ public partial class MainWindow : Window
             ? "Player"
             : _services.Settings.Username;
 
+        VersionText.Text = "Версия " + AppServices.Version;
         UsernameBox.Text = _services.Settings.Username;
         SettingsUsernameBox.Text = _services.Settings.Username;
         TelemetryCheck.IsChecked = _services.Settings.BlockTelemetry;
         JavaPathBox.Text = _services.Settings.JavaPath ?? "";
         RootPathBox.Text = _services.Root;
         ThreadsBox.Text = _services.Settings.DownloadThreads.ToString();
+        TokenBox.Text = _services.Settings.GitHubToken ?? "";
+        AutoUpdateCheck.IsChecked = _services.Settings.AutoCheckUpdates;
 
         _suppressMemoryEvent = true;
         MemorySlider.Value = _services.Settings.MemoryMb;
         _suppressMemoryEvent = false;
         MemoryText.Text = _services.Settings.MemoryMb + " МБ";
+        MemoryHint.Text = $"Всего ОЗУ: {SystemInfo.TotalMemoryMb / 1024.0:F0} ГБ · рекомендуется {SystemInfo.RecommendedMemoryMb} МБ";
 
         UpdateResolutionBox();
 
-        _ = LoadInstancesAsync();
+        _ready = true;
+        _ = InitializeAsync();
     }
 
-    private void UpdateResolutionBox()
+    private async Task InitializeAsync()
     {
-        var items = ResolutionPresets.Select(p => $"{p.Width} × {p.Height}").ToList();
-        items.Add(CustomResolution);
+        await LoadInstancesAsync();
 
-        _suppressResolutionEvent = true;
-        ResolutionBox.ItemsSource = items;
-
-        var current = _current is null ? "1280 × 720" : $"{_current.Width} × {_current.Height}";
-        if (items.Contains(current))
-        {
-            ResolutionBox.SelectedItem = current;
-            CustomResolutionPanel.IsVisible = false;
-        }
-        else
-        {
-            ResolutionBox.SelectedItem = CustomResolution;
-            CustomResolutionPanel.IsVisible = true;
-            WidthBox.Text = _current?.Width.ToString() ?? "1280";
-            HeightBox.Text = _current?.Height.ToString() ?? "720";
-        }
-
-        _suppressResolutionEvent = false;
-        ResolutionText.Text = current;
+        if (_services.Settings.AutoCheckUpdates)
+            await CheckLauncherUpdateAsync(true);
     }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
@@ -147,6 +148,9 @@ public partial class MainWindow : Window
 
         _current = instance;
         _services.Settings.LastInstanceId = instance.Id;
+        _updates.Clear();
+        _resultsLoaded = false;
+        ResultsList.ItemsSource = null;
 
         TitleText.Text = instance.Name;
         SubtitleText.Text = $"{instance.MinecraftVersion} · {instance.LoaderName}"
@@ -162,6 +166,9 @@ public partial class MainWindow : Window
         UpdateResolutionBox();
 
         RefreshInstalled();
+
+        if (Tabs.SelectedIndex == 1)
+            _ = EnsureContentSearchAsync();
     }
 
     private async void OnNewInstance(object? sender, RoutedEventArgs e)
@@ -185,6 +192,9 @@ public partial class MainWindow : Window
             var instance = await _services.Instances.CreateAsync(
                 draft.Name, draft.MinecraftVersion, draft.Loader, draft.LoaderVersion);
 
+            instance.MemoryMb = SystemInfo.RecommendedMemoryMb;
+            await _services.Instances.SaveAsync(instance);
+
             UpdateOverlay("Скачивание игры...");
             await _services.Installer.InstallVanillaAsync(instance, UpdateOverlay, _cts.Token, progress);
 
@@ -197,7 +207,7 @@ public partial class MainWindow : Window
 
             await LoadInstancesAsync();
             InstanceList.SelectedItem = _instances.FirstOrDefault(i => i.Id == instance.Id);
-            AppendLog($"Профиль {instance.Name} готов.");
+            AppendLog($"Профиль {instance.Name} готов, язык игры — русский.");
         }
         catch (Exception ex)
         {
@@ -262,17 +272,31 @@ public partial class MainWindow : Window
         LogBox.Text = "";
     }
 
-    private static readonly (int Width, int Height)[] ResolutionPresets =
+    private void UpdateResolutionBox()
     {
-        (1920, 1080),
-        (1600, 900),
-        (1366, 768),
-        (1280, 720),
-        (1024, 768),
-        (854, 480)
-    };
+        var items = ResolutionPresets.Select(p => $"{p.Width} × {p.Height}").ToList();
+        items.Add(CustomResolution);
 
-    private const string CustomResolution = "Своя…";
+        _suppressResolutionEvent = true;
+        ResolutionBox.ItemsSource = items;
+
+        var current = _current is null ? "1280 × 720" : $"{_current.Width} × {_current.Height}";
+        if (items.Contains(current))
+        {
+            ResolutionBox.SelectedItem = current;
+            CustomResolutionPanel.IsVisible = false;
+        }
+        else
+        {
+            ResolutionBox.SelectedItem = CustomResolution;
+            CustomResolutionPanel.IsVisible = true;
+            WidthBox.Text = _current?.Width.ToString() ?? "1280";
+            HeightBox.Text = _current?.Height.ToString() ?? "720";
+        }
+
+        _suppressResolutionEvent = false;
+        ResolutionText.Text = current;
+    }
 
     private void OnResolutionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -329,6 +353,37 @@ public partial class MainWindow : Window
             _current.MemoryMb = value;
     }
 
+    private void OnRecommendMemory(object? sender, RoutedEventArgs e)
+    {
+        var value = SystemInfo.RecommendedMemoryMb;
+
+        _suppressMemoryEvent = true;
+        MemorySlider.Value = value;
+        _suppressMemoryEvent = false;
+
+        MemoryText.Text = value + " МБ";
+        if (_current is not null)
+            _current.MemoryMb = value;
+
+        StatusText.Text = $"Подобрано {value} МБ из {SystemInfo.TotalMemoryMb / 1024.0:F0} ГБ";
+    }
+
+    private void OnTabChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready)
+            return;
+
+        if (Tabs.SelectedIndex == 1)
+        {
+            RefreshInstalled();
+            _ = EnsureContentSearchAsync();
+        }
+        else if (Tabs.SelectedIndex == 2)
+        {
+            _ = EnsureModpackSearchAsync();
+        }
+    }
+
     private void OnKindChanged(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button button)
@@ -342,7 +397,9 @@ public partial class MainWindow : Window
         SetActive(SegPacks, button == SegPacks);
         SetActive(SegShaders, button == SegShaders);
 
+        _resultsLoaded = false;
         RefreshInstalled();
+        _ = EnsureContentSearchAsync();
     }
 
     private static void SetActive(Button button, bool active)
@@ -353,43 +410,122 @@ public partial class MainWindow : Window
             button.Classes.Remove("active");
     }
 
-    private async void OnSearch(object? sender, RoutedEventArgs e)
+    private async Task EnsureContentSearchAsync()
     {
         if (_current is null)
         {
+            SetFilter("Сначала выберите профиль", false);
+            return;
+        }
+
+        if (_resultsLoaded
+            && _resultsInstanceId == _current.Id
+            && _resultsKind == _kind
+            && _resultsQuery == (SearchBox.Text ?? ""))
+            return;
+
+        await RunSearchAsync();
+    }
+
+    private async void OnSearch(object? sender, RoutedEventArgs e) => await RunSearchAsync();
+
+    private void OnSearchKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+            return;
+
+        e.Handled = true;
+        _ = RunSearchAsync();
+    }
+
+    private async Task RunSearchAsync()
+    {
+        if (_current is null)
+        {
+            SetFilter("Сначала выберите профиль", false);
             StatusText.Text = "Сначала выберите профиль";
             return;
         }
 
-        ResultsList.ItemsSource = null;
+        var instance = _current;
+        var kind = _kind;
+        var query = SearchBox.Text ?? "";
+        var generation = ++_searchGeneration;
 
-        if (_kind == ContentKind.Mod && _current.Loader == LoaderKind.Vanilla)
+        if (kind == ContentKind.Mod && instance.Loader == LoaderKind.Vanilla)
         {
-            StatusText.Text = "Для модов нужен профиль с загрузчиком: Fabric, Quilt или NeoForge";
+            ResultsList.ItemsSource = null;
+            SearchCountText.Text = "";
+            SetFilter("Для модов нужен профиль с загрузчиком: Fabric, Quilt или NeoForge", true);
+            StatusText.Text = "Ванильный профиль: моды не загрузятся";
             return;
         }
 
+        SetFilter($"Только совместимое с {instance.MinecraftVersion} · {instance.LoaderName}", false);
         StatusText.Text = "Поиск...";
 
         try
         {
-            var type = _kind switch
-            {
-                ContentKind.Mod => "mod",
-                ContentKind.ResourcePack => "resourcepack",
-                _ => "shader"
-            };
-
             var response = await _services.Modrinth.SearchAsync(
-                SearchBox.Text ?? "", type, _current.MinecraftVersion, LoaderTag(), _cts.Token);
+                query, TypeOf(kind), instance.MinecraftVersion, LoaderTag(), _cts.Token);
 
-            ResultsList.ItemsSource = response.Hits.Select(p => new SearchItem(p)).ToList();
-            StatusText.Text = $"Найдено проектов: {response.TotalHits}";
+            if (generation != _searchGeneration)
+                return;
+
+            var items = response.Hits.Select(p => new SearchItem(p, TypeLabel(kind))).ToList();
+            ResultsList.ItemsSource = items;
+            SearchCountText.Text = $"{response.TotalHits} проектов";
+            StatusText.Text = $"Найдено: {response.TotalHits}";
+
+            _resultsLoaded = true;
+            _resultsInstanceId = instance.Id;
+            _resultsKind = kind;
+            _resultsQuery = query;
+
+            foreach (var item in items)
+                _ = item.LoadIconAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Ошибка поиска: " + ex.Message;
+            if (generation == _searchGeneration)
+                StatusText.Text = "Ошибка поиска: " + ex.Message;
         }
+    }
+
+    private void SetFilter(string text, bool warn)
+    {
+        FilterText.Text = text;
+
+        if (warn)
+        {
+            if (!FilterText.Classes.Contains("danger"))
+                FilterText.Classes.Add("danger");
+        }
+        else
+        {
+            FilterText.Classes.Remove("danger");
+        }
+    }
+
+    private async void OnOpenDetails(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: SearchItem item })
+            return;
+
+        var dialog = new ContentDetailsWindow(item.Project.Key, item.Project.ProjectType, _current);
+        var installed = await dialog.ShowDialog<bool>(this);
+
+        if (!installed)
+            return;
+
+        RefreshInstalled();
+        StatusText.Text = $"Установлено: {item.Title}";
+
+        foreach (var key in _updates.Where(pair => pair.Value.ProjectId == item.Project.Key).Select(pair => pair.Key).ToList())
+            _updates.Remove(key);
     }
 
     private async void OnInstallContent(object? sender, RoutedEventArgs e)
@@ -411,8 +547,12 @@ public partial class MainWindow : Window
                 return;
             }
 
+            var source = new ContentSource(item.Project.Key, item.Title, item.Project.IconUrl);
             await _services.Content.InstallWithDependenciesAsync(
-                _current, version, kind, _services.Modrinth, _cts.Token, contentProgress);
+                _current, version, kind, source, _services.Modrinth, _cts.Token, contentProgress);
+
+            foreach (var key in _updates.Where(pair => pair.Value.ProjectId == item.Project.Key).Select(pair => pair.Key).ToList())
+                _updates.Remove(key);
 
             RefreshInstalled();
             StatusText.Text = $"Установлено: {item.Title} → {ContentService.FolderFor(kind)}"
@@ -424,27 +564,113 @@ public partial class MainWindow : Window
         }
     }
 
-    private static ContentKind KindOf(string projectType) => projectType switch
-    {
-        "mod" => ContentKind.Mod,
-        "resourcepack" => ContentKind.ResourcePack,
-        "shader" => ContentKind.Shader,
-        _ => ContentKind.Mod
-    };
-
     private void OnInstalledToggle(object? sender, RoutedEventArgs e)
     {
-        if (_current is null || sender is not CheckBox { DataContext: InstalledContent content })
+        if (_current is null || sender is not CheckBox { DataContext: InstalledItem item } box)
             return;
 
         try
         {
-            _services.Content.SetEnabled(_current, content, content.Enabled);
+            var enabled = box.IsChecked == true;
+            _services.Content.SetEnabled(_current, item.Content, enabled);
             RefreshInstalled();
+            StatusText.Text = enabled ? $"Включено: {item.Title}" : $"Отключено: {item.Title}";
         }
         catch (Exception ex)
         {
             StatusText.Text = "Не удалось применить: " + ex.Message;
+            RefreshInstalled();
+        }
+    }
+
+    private async void OnCheckUpdates(object? sender, RoutedEventArgs e) => await CheckContentUpdatesAsync();
+
+    private async Task CheckContentUpdatesAsync()
+    {
+        if (_current is null)
+        {
+            StatusText.Text = "Сначала выберите профиль";
+            return;
+        }
+
+        CheckUpdatesButton.IsEnabled = false;
+        StatusText.Text = "Проверяю обновления...";
+        ShowOverlay("Проверка обновлений", "Сверяю установленные файлы с Modrinth...");
+
+        try
+        {
+            var updates = await _services.Content.CheckUpdatesAsync(_current, _services.Modrinth, _cts.Token);
+            _updates.Clear();
+            foreach (var update in updates)
+                _updates[update.Content.FileName] = update;
+
+            RefreshInstalled();
+            StatusText.Text = updates.Count == 0
+                ? "Обновлений нет"
+                : $"Доступно обновлений: {updates.Count}";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Ошибка проверки: " + ex.Message;
+        }
+        finally
+        {
+            HideOverlay();
+            CheckUpdatesButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnUpdateOne(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: InstalledItem item })
+            return;
+
+        if (_updates.TryGetValue(item.FileName, out var update))
+            await ApplyUpdateAsync(update);
+    }
+
+    private async void OnUpdateAll(object? sender, RoutedEventArgs e)
+    {
+        if (_current is null)
+            return;
+
+        var pending = _updates.Values.Where(update => update.Content.Kind == _kind).ToList();
+        foreach (var update in pending)
+        {
+            await ApplyUpdateAsync(update);
+            if (_cts.IsCancellationRequested)
+                break;
+        }
+    }
+
+    private async Task ApplyUpdateAsync(ContentUpdate update)
+    {
+        if (_current is null)
+            return;
+
+        var title = string.IsNullOrWhiteSpace(update.Title) ? update.Content.DisplayName : update.Title;
+        ShowOverlay("Обновление", $"{title} → {update.Latest.VersionNumber}");
+
+        try
+        {
+            await _services.Content.UpdateAsync(_current, update, _cts.Token, contentProgress);
+            _updates.Remove(update.Content.FileName);
+            RefreshInstalled();
+            StatusText.Text = $"Обновлено: {title} → {update.Latest.VersionNumber}";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Ошибка обновления: " + ex.Message;
+        }
+        finally
+        {
+            HideOverlay();
         }
     }
 
@@ -462,24 +688,237 @@ public partial class MainWindow : Window
         if (_current is null)
         {
             InstalledList.ItemsSource = null;
+            UpdateAllButton.IsVisible = false;
             return;
         }
 
-        var items = _services.Content.ListInstalled(_current)
-            .Where(i => i.Kind == _kind)
-            .OrderBy(i => i.FileName, StringComparer.OrdinalIgnoreCase)
+        var contents = _services.Content.ListInstalled(_current)
+            .Where(item => item.Kind == _kind)
+            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        InstalledList.ItemsSource = items;
+        var view = new List<InstalledItem>();
+        foreach (var content in contents)
+        {
+            var item = new InstalledItem(content);
+            if (_updates.TryGetValue(content.FileName, out var update))
+            {
+                item.UpdateAvailable = true;
+                var from = string.IsNullOrEmpty(content.VersionNumber) ? content.KindName : content.VersionNumber;
+                item.SetVersion($"{from} → {update.Latest.VersionNumber}");
+            }
+
+            view.Add(item);
+        }
+
+        InstalledList.ItemsSource = view;
+        UpdateAllButton.IsVisible = _updates.Values.Any(update => update.Content.Kind == _kind);
+
+        foreach (var item in view)
+            _ = item.LoadIconAsync(_cts.Token);
     }
 
-    private string? LoaderTag() => _current?.Loader switch
+    private async Task EnsureModpackSearchAsync()
     {
-        LoaderKind.Fabric => "fabric",
-        LoaderKind.Quilt => "quilt",
-        LoaderKind.NeoForge => "neoforge",
-        _ => null
-    };
+        if (_modpacksLoaded)
+            return;
+
+        await RunModpackSearchAsync();
+    }
+
+    private async void OnSearchModpacks(object? sender, RoutedEventArgs e) => await RunModpackSearchAsync();
+
+    private void OnModpackSearchKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+            return;
+
+        e.Handled = true;
+        _ = RunModpackSearchAsync();
+    }
+
+    private async Task RunModpackSearchAsync()
+    {
+        var generation = ++_modpackGeneration;
+        StatusText.Text = "Поиск сборок...";
+
+        try
+        {
+            var response = await _services.Modrinth.SearchAsync(
+                ModpackSearchBox.Text ?? "", "modpack", "", null, _cts.Token);
+
+            if (generation != _modpackGeneration)
+                return;
+
+            var items = response.Hits.Select(hit => new SearchItem(hit, "Модпак")).ToList();
+            ModpackList.ItemsSource = items;
+            ModpackCountText.Text = $"{response.TotalHits} сборок";
+            _modpacksLoaded = true;
+            StatusText.Text = "Готово";
+
+            foreach (var item in items)
+                _ = item.LoadIconAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (generation == _modpackGeneration)
+                StatusText.Text = "Ошибка поиска: " + ex.Message;
+        }
+    }
+
+    private async void OnInstallModpack(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: SearchItem item })
+            return;
+
+        try
+        {
+            var versions = await _services.Modrinth.GetVersionsAsync(item.Project.Key, _cts.Token);
+            var version = versions
+                .Where(candidate => candidate.Files.Count > 0)
+                .OrderByDescending(candidate => candidate.VersionType == "release")
+                .ThenByDescending(candidate => candidate.DatePublished)
+                .FirstOrDefault();
+
+            if (version is null)
+            {
+                StatusText.Text = "У этой сборки нет файлов";
+                return;
+            }
+
+            ShowOverlay("Установка сборки", $"Скачивание «{item.Title}»...");
+            UpdateOverlayBar(false, 0);
+
+            var progress = new Progress<DownloadState>(state =>
+            {
+                if (state.Total > 0)
+                {
+                    UpdateOverlayBar(true, state.Total, state.Done);
+                    UpdateOverlayProgress($"{state.Name}: {state.Done / 1048576.0:F1} МБ из {state.Total / 1048576.0:F1} МБ");
+                }
+                else
+                {
+                    UpdateOverlayBar(false, 0);
+                    UpdateOverlayProgress(state.Name);
+                }
+            });
+
+            var instance = await _services.Modpacks.InstallAsync(
+                version, item.Title, item.Project.IconUrl, item.Project.Key,
+                UpdateOverlay, progress, _cts.Token);
+
+            await LoadInstancesAsync();
+            InstanceList.SelectedItem = _instances.FirstOrDefault(candidate => candidate.Id == instance.Id);
+            AppendLog($"Сборка «{item.Title}» установлена в профиль {instance.Name}.");
+            StatusText.Text = $"Сборка установлена: {instance.Name}";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Ошибка установки сборки: " + ex.Message;
+            AppendLog("Ошибка установки сборки: " + ex.Message);
+        }
+        finally
+        {
+            HideOverlay();
+        }
+    }
+
+    private async void OnCheckLauncherUpdate(object? sender, RoutedEventArgs e)
+        => await CheckLauncherUpdateAsync(false);
+
+    private async Task CheckLauncherUpdateAsync(bool silent)
+    {
+        StatusText.Text = silent ? "Готово" : "Проверяю обновления лаунчера...";
+
+        var release = await _services.Updates.GetLatestAsync(_services.Settings.GitHubToken, _cts.Token);
+        if (release is null)
+        {
+            if (!silent)
+                StatusText.Text = "Не удалось проверить: для приватного репозитория нужен токен GitHub в настройках";
+            return;
+        }
+
+        if (!UpdateService.IsNewer(release.TagName, AppServices.Version))
+        {
+            if (!silent)
+                StatusText.Text = $"Установлена последняя версия {AppServices.Version}";
+            return;
+        }
+
+        var asset = UpdateService.PickAsset(release);
+        if (asset is null)
+        {
+            if (!silent)
+                StatusText.Text = $"В релизе {release.TagName} нет файла для Windows";
+            return;
+        }
+
+        _pendingAsset = asset;
+        UpdateTitle.Text = $"Доступно обновление {release.TagName.TrimStart('v', 'V')}";
+        UpdateText.Text = $"У вас {AppServices.Version}. Скачать {asset.Size / 1048576.0:F1} МБ и перезапустить лаунчер?";
+        UpdateBanner.IsVisible = true;
+        StatusText.Text = $"Доступно обновление {release.TagName}";
+    }
+
+    private async void OnInstallUpdate(object? sender, RoutedEventArgs e)
+    {
+        if (_pendingAsset is null)
+            return;
+
+        ShowOverlay("Обновление лаунчера", "Скачивание новой версии...");
+        UpdateOverlayBar(false, 0);
+
+        var progress = new Progress<DownloadState>(state =>
+        {
+            if (state.Total > 0)
+            {
+                UpdateOverlayBar(true, state.Total, state.Done);
+                UpdateOverlayProgress($"{state.Done / 1048576.0:F1} МБ из {state.Total / 1048576.0:F1} МБ");
+            }
+        });
+
+        try
+        {
+            var path = await _services.Updates.DownloadAsync(
+                _pendingAsset, _services.Settings.GitHubToken, progress, _cts.Token);
+
+            HideOverlay();
+            AppendLog("Лаунчер перезапустится с новой версией.");
+            _services.Updates.ApplyAndRestart(path);
+            Close();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            HideOverlay();
+            StatusText.Text = "Не удалось обновить: " + ex.Message;
+        }
+    }
+
+    private void OnDismissUpdate(object? sender, RoutedEventArgs e) => UpdateBanner.IsVisible = false;
+
+    private void OnOpenReleasePage(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo($"https://github.com/{UpdateService.Repository}/releases/latest")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Не удалось открыть браузер: " + ex.Message;
+        }
+    }
 
     private void OnSaveSettings(object? sender, RoutedEventArgs e)
     {
@@ -488,6 +927,8 @@ public partial class MainWindow : Window
             : SettingsUsernameBox.Text.Trim();
         _services.Settings.BlockTelemetry = TelemetryCheck.IsChecked ?? true;
         _services.Settings.JavaPath = string.IsNullOrWhiteSpace(JavaPathBox.Text) ? null : JavaPathBox.Text.Trim();
+        _services.Settings.GitHubToken = string.IsNullOrWhiteSpace(TokenBox.Text) ? null : TokenBox.Text.Trim();
+        _services.Settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked ?? true;
 
         if (int.TryParse(ThreadsBox.Text, out var threads) && threads is >= 1 and <= 16)
             _services.Settings.DownloadThreads = threads;
@@ -496,6 +937,29 @@ public partial class MainWindow : Window
         UsernameBox.Text = _services.Settings.Username;
         StatusText.Text = "Настройки сохранены";
     }
+
+    private string? LoaderTag() => _current is null ? null : ContentService.LoaderTag(_current);
+
+    private static ContentKind KindOf(string projectType) => projectType switch
+    {
+        "mod" => ContentKind.Mod,
+        "resourcepack" => ContentKind.ResourcePack,
+        _ => ContentKind.Shader
+    };
+
+    private static string TypeOf(ContentKind kind) => kind switch
+    {
+        ContentKind.Mod => "mod",
+        ContentKind.ResourcePack => "resourcepack",
+        _ => "shader"
+    };
+
+    private static string TypeLabel(ContentKind kind) => kind switch
+    {
+        ContentKind.Mod => "Мод",
+        ContentKind.ResourcePack => "Ресурспак",
+        _ => "Шейдер"
+    };
 
     private void AppendLog(string text)
     {
@@ -514,6 +978,8 @@ public partial class MainWindow : Window
     {
         OverlayTitle.Text = title;
         OverlayStatus.Text = status;
+        OverlayProgress.Text = "";
+        OverlayBar.IsIndeterminate = true;
         Overlay.IsVisible = true;
     }
 
@@ -521,9 +987,20 @@ public partial class MainWindow : Window
 
     private void UpdateOverlayProgress(string text) => Dispatcher.UIThread.Post(() => OverlayProgress.Text = text);
 
+    private void UpdateOverlayBar(bool determinate, long total, long done = 0) => Dispatcher.UIThread.Post(() =>
+    {
+        OverlayBar.IsIndeterminate = !determinate;
+        if (!determinate || total <= 0)
+            return;
+
+        OverlayBar.Maximum = total;
+        OverlayBar.Value = Math.Min(done, total);
+    });
+
     private void HideOverlay() => Dispatcher.UIThread.Post(() =>
     {
         Overlay.IsVisible = false;
         OverlayProgress.Text = "";
+        OverlayBar.IsIndeterminate = true;
     });
 }

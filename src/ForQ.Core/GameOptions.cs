@@ -86,4 +86,11 @@ public static class GameOptions
             return raw.Trim('"');
         }
     }
+
+    public static void EnsureRussian(string path)
+    {
+        var values = Read(path);
+        values["lang"] = "ru_ru";
+        Write(path, values);
+    }
 }

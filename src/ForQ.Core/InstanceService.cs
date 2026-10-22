@@ -67,6 +67,7 @@ public sealed class InstanceService
 
         instance.RootPath = _root;
         PrepareFolders(instance);
+        GameOptions.EnsureRussian(instance.OptionsPath);
         await SaveAsync(instance);
         return instance;
     }

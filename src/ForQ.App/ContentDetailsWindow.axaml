@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.ContentDetailsWindow"
+        Title="Карточка проекта"
+        Width="760" Height="760" MinWidth="560" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="24,22,24,14">
+            <Border Width="46" Height="46" CornerRadius="10" ClipToBounds="True" Background="{StaticResource SurfaceAltBrush}">
+                <Image x:Name="IconImage" Stretch="UniformToFill" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="3" VerticalAlignment="Center">
+                <TextBlock x:Name="TitleText" Classes="title" TextWrapping="Wrap" Text="Загрузка..." />
+                <TextBlock x:Name="MetaText" Classes="muted" TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Margin="24,0,24,0" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="14">
+                <Border Height="210" CornerRadius="12" ClipToBounds="True" Background="{StaticResource SurfaceBrush}">
+                    <Image x:Name="HeroImage" Stretch="UniformToFill" />
+                </Border>
+
+                <TextBlock x:Name="BadgesText" Classes="hint" TextWrapping="Wrap" />
+
+                <TextBlock x:Name="DescriptionText" FontSize="14" TextWrapping="Wrap" Text="Переводим описание..." />
+
+                <Border x:Name="DependenciesBlock" Background="{StaticResource SurfaceBrush}" CornerRadius="10" Padding="14">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="ЗАВИСИМОСТИ" Classes="section" />
+                        <StackPanel x:Name="DependencyPanel" Spacing="4" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="PackNote" IsVisible="False" Classes="muted" TextWrapping="Wrap"
+                           Text="Сборка установится отдельным профилем: версия Minecraft, загрузчик и все моды определятся из её файла." />
+
+                <StackPanel x:Name="SimilarBlock" Spacing="8">
+                    <TextBlock Text="ПОХОЖИЕ ПРОЕКТЫ" Classes="section" />
+                    <ListBox x:Name="SimilarList" MaxHeight="230">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                    <Border Width="30" Height="30" CornerRadius="7" ClipToBounds="True"
+                                            Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Center">
+                                        <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Meta}" Classes="hint" />
+                                    </StackPanel>
+                                    <Button Grid.Column="2" Content="Открыть" Classes="ghost" VerticalAlignment="Center"
+                                            Click="OnOpenSimilar" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+
+                <StackPanel Spacing="7" Margin="0,0,0,8">
+                    <TextBlock Text="ПОДРОБНОЕ ОПИСАНИЕ" Classes="section" />
+                    <TextBlock x:Name="BodyText" TextWrapping="Wrap" Classes="muted" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" Margin="24,14,24,20">
+            <StackPanel Grid.Column="0" Spacing="5" VerticalAlignment="Center" Margin="0,0,12,0">
+                <TextBlock x:Name="StatusText" Classes="hint" TextWrapping="Wrap" Text="Готово" />
+                <ProgressBar x:Name="Progress" IsVisible="False" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Закрыть" Classes="ghost" Click="OnClose" />
+            <Button Grid.Column="2" x:Name="InstallButton" Content="Установить" Classes="accent"
+                    Click="OnInstall" IsEnabled="False" Margin="8,0,0,0" />
+        </Grid>
+    </Grid>
+</Window>

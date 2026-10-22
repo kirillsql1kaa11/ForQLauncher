@@ -26,8 +26,15 @@ public sealed class HttpApi : IDisposable
     }
 
     public async Task<string> GetStringAsync(string url, CancellationToken ct)
+        => await GetStringAsync(url, ct, null);
+
+    public async Task<string> GetStringAsync(string url, CancellationToken ct, string? bearerToken)
     {
-        using var response = await _client.GetAsync(url, HttpCompletionOption.ResponseContentRead, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken.Trim());
+
+        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(ct);
     }
@@ -39,8 +46,36 @@ public sealed class HttpApi : IDisposable
                ?? throw new InvalidDataException($"Пустой ответ: {url}");
     }
 
+    public async Task<T> GetJsonAsync<T>(string url, CancellationToken ct, string? bearerToken)
+    {
+        var json = await GetStringAsync(url, ct, bearerToken);
+        return System.Text.Json.JsonSerializer.Deserialize<T>(json, Json.Options)
+               ?? throw new InvalidDataException($"Пустой ответ: {url}");
+    }
+
+    public async Task<T> PostJsonAsync<T>(string url, string body, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+
+        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync(ct);
+        return System.Text.Json.JsonSerializer.Deserialize<T>(json, Json.Options)
+               ?? throw new InvalidDataException($"Пустой ответ: {url}");
+    }
+
+    public async Task<byte[]> GetBytesAsync(string url, CancellationToken ct)
+    {
+        using var response = await _client.GetAsync(url, HttpCompletionOption.ResponseContentRead, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     public async Task DownloadFileAsync(string url, string destination, long expectedSize, string expectedSha1, CancellationToken ct,
-        Action<long>? onBytes = null)
+        Action<long>? onBytes = null, string? bearerToken = null)
     {
         var directory = Path.GetDirectoryName(destination);
         if (!string.IsNullOrEmpty(directory))
@@ -56,7 +91,11 @@ public sealed class HttpApi : IDisposable
             File.Delete(destination);
         }
 
-        using var response = await _client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken.Trim());
+
+        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
         await using (var input = await response.Content.ReadAsStreamAsync(ct))

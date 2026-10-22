@@ -381,6 +381,10 @@
     <Setter Property="FontSize" Value="11" />
   </Style>
 
+  <Style Selector="TextBlock.danger">
+    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+  </Style>
+
   <Style Selector="TextBlock.title">
     <Setter Property="FontSize" Value="19" />
     <Setter Property="FontWeight" Value="SemiBold" />

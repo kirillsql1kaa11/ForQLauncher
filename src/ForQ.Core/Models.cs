@@ -270,6 +270,7 @@ public sealed class ModrinthProject
 public sealed class ModrinthVersion
 {
     [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("project_id")] public string ProjectId { get; set; } = "";
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("version_number")] public string VersionNumber { get; set; } = "";
     [JsonPropertyName("game_versions")] public List<string> GameVersions { get; set; } = new();
@@ -294,4 +295,82 @@ public sealed class ModrinthFile
     [JsonPropertyName("size")] public long Size { get; set; }
     [JsonPropertyName("primary")] public bool Primary { get; set; }
     [JsonPropertyName("hashes")] public Dictionary<string, string> Hashes { get; set; } = new();
+}
+
+public sealed class ModrinthProjectDetails
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("slug")] public string Slug { get; set; } = "";
+    [JsonPropertyName("title")] public string Title { get; set; } = "";
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
+    [JsonPropertyName("body")] public string Body { get; set; } = "";
+    [JsonPropertyName("project_type")] public string ProjectType { get; set; } = "";
+    [JsonPropertyName("icon_url")] public string? IconUrl { get; set; }
+    [JsonPropertyName("downloads")] public long Downloads { get; set; }
+    [JsonPropertyName("followers")] public long Followers { get; set; }
+    [JsonPropertyName("categories")] public List<string> Categories { get; set; } = new();
+    [JsonPropertyName("loaders")] public List<string> Loaders { get; set; } = new();
+    [JsonPropertyName("game_versions")] public List<string> GameVersions { get; set; } = new();
+    [JsonPropertyName("gallery")] public List<ModrinthGalleryImage> Gallery { get; set; } = new();
+    [JsonPropertyName("license")] public ModrinthLicense? License { get; set; }
+    [JsonPropertyName("source_url")] public string? SourceUrl { get; set; }
+    [JsonPropertyName("issues_url")] public string? IssuesUrl { get; set; }
+    [JsonPropertyName("updated")] public DateTimeOffset Updated { get; set; }
+}
+
+public sealed class ModrinthGalleryImage
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("featured")] public bool Featured { get; set; }
+    [JsonPropertyName("title")] public string? Title { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+}
+
+public sealed class ModrinthLicense
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+}
+
+public sealed class ModpackIndex
+{
+    [JsonPropertyName("formatVersion")] public int FormatVersion { get; set; }
+    [JsonPropertyName("versionId")] public string VersionId { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("summary")] public string Summary { get; set; } = "";
+    [JsonPropertyName("files")] public List<ModpackFile> Files { get; set; } = new();
+    [JsonPropertyName("dependencies")] public Dictionary<string, string> Dependencies { get; set; } = new();
+}
+
+public sealed class ModpackFile
+{
+    [JsonPropertyName("path")] public string Path { get; set; } = "";
+    [JsonPropertyName("hashes")] public Dictionary<string, string> Hashes { get; set; } = new();
+    [JsonPropertyName("env")] public ModpackEnvironment? Env { get; set; }
+    [JsonPropertyName("downloads")] public List<string> Downloads { get; set; } = new();
+    [JsonPropertyName("fileSize")] public long FileSize { get; set; }
+}
+
+public sealed class ModpackEnvironment
+{
+    [JsonPropertyName("client")] public string? Client { get; set; }
+    [JsonPropertyName("server")] public string? Server { get; set; }
+}
+
+public sealed class GitHubRelease
+{
+    [JsonPropertyName("tag_name")] public string TagName { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("body")] public string Body { get; set; } = "";
+    [JsonPropertyName("html_url")] public string HtmlUrl { get; set; } = "";
+    [JsonPropertyName("published_at")] public DateTimeOffset PublishedAt { get; set; }
+    [JsonPropertyName("assets")] public List<GitHubAsset> Assets { get; set; } = new();
+}
+
+public sealed class GitHubAsset
+{
+    [JsonPropertyName("id")] public long Id { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("size")] public long Size { get; set; }
+    [JsonPropertyName("browser_download_url")] public string BrowserDownloadUrl { get; set; } = "";
 }
