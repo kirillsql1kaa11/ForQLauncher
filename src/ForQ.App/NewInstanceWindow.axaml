@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.NewInstanceWindow"
+        Title="Новый профиль"
+        Width="440" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <StackPanel Margin="24" Spacing="16">
+        <StackPanel Spacing="7">
+            <TextBlock Text="НАЗВАНИЕ" Classes="section" />
+            <TextBox x:Name="NameBox" PlaceholderText="Мой профиль" />
+        </StackPanel>
+
+        <StackPanel Spacing="7">
+            <TextBlock Text="ВЕРСИЯ MINECRAFT" Classes="section" />
+            <ComboBox x:Name="VersionBox" SelectionChanged="OnVersionChanged" />
+        </StackPanel>
+
+        <StackPanel Spacing="7">
+            <TextBlock Text="ЗАГРУЗЧИК МОДОВ" Classes="section" />
+            <ComboBox x:Name="LoaderBox" SelectedIndex="0" SelectionChanged="OnLoaderChanged">
+                <ComboBoxItem Content="Без загрузчика" />
+                <ComboBoxItem Content="Fabric" />
+                <ComboBoxItem Content="Quilt" />
+                <ComboBoxItem Content="NeoForge" />
+            </ComboBox>
+        </StackPanel>
+
+        <StackPanel Spacing="7">
+            <TextBlock Text="ВЕРСИЯ ЗАГРУЗЧИКА" Classes="section" />
+            <ComboBox x:Name="LoaderVersionBox" />
+        </StackPanel>
+
+        <TextBlock x:Name="HintText" Classes="hint" TextWrapping="Wrap" MinHeight="18" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,4,0,0">
+            <Button Content="Отмена" Classes="ghost" Click="OnCancel" />
+            <Button Content="Создать" Classes="accent" Click="OnCreate" />
+        </StackPanel>
+    </StackPanel>
+</Window>

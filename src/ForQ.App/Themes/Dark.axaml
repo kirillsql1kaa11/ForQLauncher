@@ -1,0 +1,504 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.Themes.Dark">
+
+  <Styles.Resources>
+    <SolidColorBrush x:Key="BgBrush" Color="#0E1116" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#151A21" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#1B212A" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#232A35" />
+    <SolidColorBrush x:Key="BorderSoftBrush" Color="#242B36" />
+    <SolidColorBrush x:Key="FgBrush" Color="#E7EBF2" />
+    <SolidColorBrush x:Key="FgMutedBrush" Color="#8A93A5" />
+    <SolidColorBrush x:Key="FgDimBrush" Color="#5C6577" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#5DBB63" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#6FC974" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#4EA254" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#08130A" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#E0575B" />
+    <SolidColorBrush x:Key="SliderThumbBackground" Color="#E7EBF2" />
+    <SolidColorBrush x:Key="SliderTrackFill" Color="#232A35" />
+    <SolidColorBrush x:Key="SliderTrackValueFill" Color="#5DBB63" />
+
+    <ControlTheme x:Key="ForQButton" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSoftBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="14,7" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="Bd"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="7"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter x:Name="PART_Content"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              TextBlock.Foreground="{TemplateBinding Foreground}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Bd">
+        <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bd">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Bd">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQTextBox" TargetType="TextBox">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSoftBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="PlaceholderForeground" Value="{StaticResource FgDimBrush}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="Bd"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="7">
+            <DockPanel Margin="{TemplateBinding Padding}">
+              <ScrollViewer x:Name="PART_ScrollViewer"
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Hidden">
+                <Panel>
+                  <TextBlock x:Name="PART_Placeholder"
+                             Text="{TemplateBinding PlaceholderText}"
+                             Foreground="{TemplateBinding PlaceholderForeground}"
+                             IsVisible="False" />
+                  <TextPresenter x:Name="PART_TextPresenter"
+                                 Text="{TemplateBinding Text, Mode=TwoWay}"
+                                 CaretBrush="{TemplateBinding CaretBrush}"
+                                 SelectionBrush="{TemplateBinding SelectionBrush}"
+                                 TextWrapping="{TemplateBinding TextWrapping}" />
+                </Panel>
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:empty /template/ TextBlock#PART_Placeholder">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:focus /template/ Border#Bd">
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQComboBox" TargetType="ComboBox">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSoftBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid ColumnDefinitions="*,Auto">
+            <Border x:Name="Background"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="2"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="7">
+              <Grid ColumnDefinitions="*,Auto" Margin="{TemplateBinding Padding}">
+                <ContentControl x:Name="ContentPresenter"
+                                Grid.Column="0"
+                                Content="{TemplateBinding SelectionBoxItem}"
+                                ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="Center" />
+                <Path Grid.Column="1" Data="M 0 0 L 4 4 L 8 0" Stroke="{StaticResource FgMutedBrush}"
+                      StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                      VerticalAlignment="Center" Margin="8,0,0,0" />
+              </Grid>
+            </Border>
+            <Popup Name="PART_Popup"
+                   WindowManagerAddShadowHint="False"
+                   IsOpen="{TemplateBinding IsDropDownOpen, Mode=TwoWay}"
+                   MinWidth="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}"
+                   MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                   PlacementTarget="Background"
+                   IsLightDismissEnabled="True"
+                   InheritsTransform="True">
+              <Border Background="{StaticResource SurfaceAltBrush}"
+                      BorderBrush="{StaticResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="8"
+                      Padding="4">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </ScrollViewer>
+              </Border>
+            </Popup>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Background">
+        <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      </Style>
+      <Style Selector="^:focus /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQComboBoxItem" TargetType="ComboBoxItem">
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Bd">
+        <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+      </Style>
+      <Style Selector="^:selected /template/ Border#Bd">
+        <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQListBox" TargetType="ListBox">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  ClipToBounds="{TemplateBinding ClipToBounds}">
+            <ScrollViewer Name="PART_ScrollViewer"
+                          HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                          VerticalScrollBarVisibility="Auto">
+              <ItemsPresenter Name="PART_ItemsPresenter"
+                              ItemsPanel="{TemplateBinding ItemsPanel}"
+                              Margin="{TemplateBinding Padding}" />
+            </ScrollViewer>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQListBoxItem" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="PART_LayoutRoot"
+                  Background="{TemplateBinding Background}"
+                  CornerRadius="9"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter x:Name="PART_ContentPresenter"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      </Style>
+      <Style Selector="^:selected /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQTabControl" TargetType="TabControl">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid RowDefinitions="Auto,*">
+            <Border Grid.Row="0"
+                    Background="{StaticResource SurfaceBrush}"
+                    CornerRadius="9"
+                    Padding="4"
+                    Margin="0,0,0,12">
+              <ItemsPresenter Name="PART_ItemsPresenter"
+                              ItemsPanel="{TemplateBinding ItemsPanel}" />
+            </Border>
+            <ContentPresenter Grid.Row="1"
+                              Name="PART_SelectedContentHost"
+                              Content="{TemplateBinding SelectedContent}"
+                              ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQTabItem" TargetType="TabItem">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="Foreground" Value="{StaticResource FgMutedBrush}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="PART_LayoutRoot"
+                  Background="{TemplateBinding Background}"
+                  CornerRadius="7"
+                  Padding="{TemplateBinding Padding}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border x:Name="PART_SelectedPipe"
+                      Width="6" Height="6" CornerRadius="3"
+                      Background="{StaticResource FgDimBrush}"
+                      VerticalAlignment="Center" />
+              <ContentPresenter x:Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Header}"
+                                ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:selected /template/ Border#PART_SelectedPipe">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      </Style>
+      <Style Selector="^:selected">
+        <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQCheckBox" TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border x:Name="Box" Width="17" Height="17" CornerRadius="5"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderSoftBrush}" BorderThickness="1"
+                    VerticalAlignment="Center">
+              <Path x:Name="Tick" Data="M 3 8 L 6 11 L 11 4" Stroke="{StaticResource AccentTextBrush}"
+                    StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" IsVisible="False" />
+            </Border>
+            <ContentPresenter VerticalAlignment="Center"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}" />
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:checked /template/ Border#Box">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      </Style>
+      <Style Selector="^:checked /template/ Path#Tick">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="ForQThumb" TargetType="Thumb">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Ellipse Width="14" Height="14" Fill="{TemplateBinding Background}" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ForQSlider" TargetType="Slider">
+      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid Height="20">
+            <Track Name="PART_Track"
+                   Minimum="{TemplateBinding Minimum}"
+                   Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                   IsDirectionReversed="{TemplateBinding IsDirectionReversed}"
+                   Orientation="Horizontal">
+              <Track.DecreaseButton>
+                <RepeatButton Name="PART_DecreaseButton" Focusable="False" Background="{TemplateBinding Foreground}">
+                  <RepeatButton.Template>
+                    <ControlTemplate>
+                      <Grid>
+                        <Border Background="{TemplateBinding Background}" CornerRadius="2" Height="4" VerticalAlignment="Center" />
+                      </Grid>
+                    </ControlTemplate>
+                  </RepeatButton.Template>
+                </RepeatButton>
+              </Track.DecreaseButton>
+              <Track.IncreaseButton>
+                <RepeatButton Name="PART_IncreaseButton" Focusable="False" Background="{TemplateBinding Background}">
+                  <RepeatButton.Template>
+                    <ControlTemplate>
+                      <Grid>
+                        <Border Background="{TemplateBinding Background}" CornerRadius="2" Height="4" VerticalAlignment="Center" />
+                      </Grid>
+                    </ControlTemplate>
+                  </RepeatButton.Template>
+                </RepeatButton>
+              </Track.IncreaseButton>
+              <Thumb Name="thumb" Width="14" Height="14" Background="{StaticResource FgBrush}"
+                     Theme="{StaticResource ForQThumb}" />
+            </Track>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource BgBrush}" />
+    <Setter Property="TextBlock.Foreground" Value="{StaticResource FgBrush}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+    <Setter Property="LineHeight" Value="19" />
+  </Style>
+
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{StaticResource FgMutedBrush}" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="TextBlock.hint">
+    <Setter Property="Foreground" Value="{StaticResource FgDimBrush}" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="19" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource FgDimBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="Consolas,Menlo,Monospace" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="Theme" Value="{StaticResource ForQButton}" />
+  </Style>
+
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="22,9" />
+  </Style>
+
+  <Style Selector="Button.accent:pointerover /template/ Border#Bd">
+    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.accent:pressed /template/ Border#Bd">
+    <Setter Property="Background" Value="{StaticResource AccentPressedBrush}" />
+  </Style>
+
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource FgMutedBrush}" />
+  </Style>
+
+  <Style Selector="Button.ghost:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+  </Style>
+
+  <Style Selector="Button.ghost:pointerover /template/ Border#Bd">
+    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+  </Style>
+
+  <Style Selector="Button.danger">
+    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.danger:pointerover /template/ Border#Bd">
+    <Setter Property="Background" Value="#2A1B1D" />
+  </Style>
+
+  <Style Selector="Button.segment">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource FgMutedBrush}" />
+    <Setter Property="Padding" Value="13,7" />
+  </Style>
+
+  <Style Selector="Button.segment:pointerover /template/ Border#Bd">
+    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+  </Style>
+
+  <Style Selector="Button.segment.active">
+    <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="Theme" Value="{StaticResource ForQTextBox}" />
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="Theme" Value="{StaticResource ForQComboBox}" />
+  </Style>
+
+  <Style Selector="ComboBoxItem">
+    <Setter Property="Theme" Value="{StaticResource ForQComboBoxItem}" />
+  </Style>
+
+  <Style Selector="ListBox">
+    <Setter Property="Theme" Value="{StaticResource ForQListBox}" />
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="Theme" Value="{StaticResource ForQListBoxItem}" />
+  </Style>
+
+  <Style Selector="TabControl">
+    <Setter Property="Theme" Value="{StaticResource ForQTabControl}" />
+  </Style>
+
+  <Style Selector="TabItem">
+    <Setter Property="Theme" Value="{StaticResource ForQTabItem}" />
+  </Style>
+
+  <Style Selector="CheckBox">
+    <Setter Property="Theme" Value="{StaticResource ForQCheckBox}" />
+  </Style>
+
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+    <Setter Property="Height" Value="4" />
+  </Style>
+
+  <Style Selector="Slider">
+    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+    <Setter Property="Height" Value="20" />
+  </Style>
+
+</Styles>

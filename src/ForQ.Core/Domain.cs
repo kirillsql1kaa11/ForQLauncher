@@ -34,6 +34,13 @@ public sealed class Instance
     [JsonIgnore] public string RootPath { get; set; } = "";
     [JsonIgnore] public string Folder => Path.Combine(RootPath, "instances", Id);
     [JsonIgnore] public string OptionsPath => Path.Combine(Folder, "options.txt");
+    [JsonIgnore] public string LoaderName => Loader switch
+    {
+        LoaderKind.Vanilla => "Ванильный",
+        LoaderKind.Fabric => "Fabric",
+        LoaderKind.Quilt => "Quilt",
+        _ => "NeoForge"
+    };
 }
 
 public sealed class AppSettings
@@ -61,4 +68,11 @@ public sealed class InstalledContent
     public ContentKind Kind { get; init; }
     public bool Enabled { get; init; } = true;
     public long Size { get; init; }
+
+    [JsonIgnore] public string KindName => Kind switch
+    {
+        ContentKind.Mod => "Мод",
+        ContentKind.ResourcePack => "Ресурспак",
+        _ => "Шейдер"
+    };
 }
