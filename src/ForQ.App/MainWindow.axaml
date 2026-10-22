@@ -147,7 +147,8 @@
                             <TextBlock Grid.Column="1" x:Name="SearchCountText" Classes="hint" />
                         </Grid>
 
-                        <ListBox Grid.Row="2" Grid.Column="0" x:Name="ResultsList" Margin="0,0,12,0">
+                        <Grid Grid.Row="2" Grid.Column="0" RowDefinitions="*,Auto" Margin="0,0,12,0">
+                        <ListBox x:Name="ResultsList">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto">
@@ -162,12 +163,18 @@
                                         <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
                                         <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
                                             <Button Content="Подробнее" Click="OnOpenDetails" FontSize="12" Padding="12,5" />
-                                            <Button Content="Установить" Classes="accent" Click="OnInstallContent" FontSize="12" Padding="12,6" />
+                                            <Button Content="Установить" Classes="accent" Click="OnInstallContent" FontSize="12" Padding="12,6"
+                                                    IsVisible="{Binding NotInstalled}" />
+                                            <Button Content="Установлено" Click="OnInstallContent" FontSize="12" Padding="12,6"
+                                                    IsVisible="{Binding Installed}" IsEnabled="False" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                            <Button Grid.Row="1" x:Name="SearchMoreButton" Content="Показать ещё" Classes="ghost"
+                                    HorizontalAlignment="Center" Margin="0,8,0,0" IsVisible="False" Click="OnLoadMoreContent" />
+                        </Grid>
 
                         <Border Grid.Row="2" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
                             <Grid RowDefinitions="Auto,*">
@@ -179,7 +186,7 @@
                                 <ListBox Grid.Row="1" x:Name="InstalledList">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
                                                 <CheckBox Grid.RowSpan="2" Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}"
                                                           Click="OnInstalledToggle" VerticalAlignment="Center" />
                                                 <Border Grid.RowSpan="2" Grid.Column="1" Width="30" Height="30" CornerRadius="7"
@@ -193,6 +200,8 @@
                                                 <Button Grid.Column="3" Grid.RowSpan="2" Content="Обновить" FontSize="11"
                                                         Padding="8,3" IsVisible="{Binding UpdateAvailable}" Click="OnUpdateOne"
                                                         VerticalAlignment="Center" />
+                                                <Button Grid.Column="4" Grid.RowSpan="2" Content="{Binding DeleteLabel}" FontSize="10"
+                                                        Padding="6,3" Classes="ghost" Click="OnDeleteInstalled" VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -215,7 +224,8 @@
                             <TextBlock Grid.Column="1" x:Name="ModpackCountText" Classes="hint" />
                         </Grid>
 
-                        <ListBox Grid.Row="2" x:Name="ModpackList">
+                        <Grid Grid.Row="2" RowDefinitions="*,Auto">
+                        <ListBox x:Name="ModpackList">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto">
@@ -235,6 +245,9 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                            <Button Grid.Row="1" x:Name="ModpackMoreButton" Content="Показать ещё" Classes="ghost"
+                                    HorizontalAlignment="Center" Margin="0,8,0,0" IsVisible="False" Click="OnLoadMoreModpacks" />
+                        </Grid>
                     </Grid>
                 </TabItem>
 

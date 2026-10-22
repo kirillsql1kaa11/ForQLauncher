@@ -26,6 +26,7 @@ public abstract class ObservableBase : INotifyPropertyChanged
 public sealed class SearchItem : ObservableBase
 {
     private Bitmap? _icon;
+    private bool _installed;
 
     public SearchItem(ModrinthProject project, string typeLabel)
     {
@@ -50,6 +51,21 @@ public sealed class SearchItem : ObservableBase
         set => Set(ref _icon, value);
     }
 
+    public bool Installed
+    {
+        get => _installed;
+        set
+        {
+            if (!Set(ref _installed, value))
+                return;
+            Raise(nameof(NotInstalled));
+            Raise(nameof(InstallLabel));
+        }
+    }
+
+    public bool NotInstalled => !_installed;
+    public string InstallLabel => _installed ? "Установлено" : "Установить";
+
     public async Task LoadIconAsync(CancellationToken ct)
         => Icon = await ImageCache.LoadAsync(Project.IconUrl, ct);
 }
@@ -58,6 +74,7 @@ public sealed class InstalledItem : ObservableBase
 {
     private Bitmap? _icon;
     private bool _updateAvailable;
+    private bool _confirmDelete;
     private string _versionNumber = "";
 
     public InstalledItem(InstalledContent content)
@@ -83,6 +100,18 @@ public sealed class InstalledItem : ObservableBase
         get => _updateAvailable;
         set => Set(ref _updateAvailable, value);
     }
+
+    public bool ConfirmDelete
+    {
+        get => _confirmDelete;
+        set
+        {
+            if (Set(ref _confirmDelete, value))
+                Raise(nameof(DeleteLabel));
+        }
+    }
+
+    public string DeleteLabel => _confirmDelete ? "Точно?" : "Удалить";
 
     public void SetVersion(string label)
     {

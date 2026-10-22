@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Text;
 using Avalonia.Controls;
@@ -22,6 +23,8 @@ public partial class MainWindow : Window
     };
 
     private const string CustomResolution = "Своя…";
+    private const int SearchPageSize = 100;
+    private const int SearchMaxItems = 500;
 
     private readonly AppServices _services = AppServices.Current;
     private readonly List<Instance> _instances = new();
@@ -41,6 +44,12 @@ public partial class MainWindow : Window
     private string _resultsInstanceId = "";
     private ContentKind _resultsKind = ContentKind.Mod;
     private string _resultsQuery = "";
+    private ObservableCollection<SearchItem> _resultItems = new();
+    private ObservableCollection<SearchItem> _modpackItems = new();
+    private int _searchOffset;
+    private int _searchTotal;
+    private int _modpackOffset;
+    private int _modpackTotal;
     private GitHubAsset? _pendingAsset;
     private bool _ready;
 
@@ -452,9 +461,14 @@ public partial class MainWindow : Window
         var query = SearchBox.Text ?? "";
         var generation = ++_searchGeneration;
 
+        SearchMoreButton.IsVisible = false;
+
         if (kind == ContentKind.Mod && instance.Loader == LoaderKind.Vanilla)
         {
             ResultsList.ItemsSource = null;
+            _resultItems = new ObservableCollection<SearchItem>();
+            _searchOffset = 0;
+            _searchTotal = 0;
             SearchCountText.Text = "";
             SetFilter("Для модов нужен профиль с загрузчиком: Fabric, Quilt или NeoForge", true);
             StatusText.Text = "Ванильный профиль: моды не загрузятся";
@@ -467,23 +481,34 @@ public partial class MainWindow : Window
         try
         {
             var response = await _services.Modrinth.SearchAsync(
-                query, TypeOf(kind), instance.MinecraftVersion, LoaderTag(), _cts.Token);
+                query, TypeOf(kind), instance.MinecraftVersion, LoaderTag(), _cts.Token, SearchPageSize, 0);
 
             if (generation != _searchGeneration)
                 return;
 
-            var items = response.Hits.Select(p => new SearchItem(p, TypeLabel(kind))).ToList();
-            ResultsList.ItemsSource = items;
-            SearchCountText.Text = $"{response.TotalHits} проектов";
+            var installedIds = _services.Content.InstalledProjectIds(instance, kind);
+            _resultItems = new ObservableCollection<SearchItem>();
+            foreach (var project in response.Hits)
+            {
+                var item = new SearchItem(project, TypeLabel(kind))
+                {
+                    Installed = installedIds.Contains(project.Key)
+                };
+                _resultItems.Add(item);
+                _ = item.LoadIconAsync(_cts.Token);
+            }
+
+            ResultsList.ItemsSource = _resultItems;
+            _searchOffset = response.Hits.Count;
+            _searchTotal = (int)response.TotalHits;
+            UpdateSearchMore();
+
             StatusText.Text = $"Найдено: {response.TotalHits}";
 
             _resultsLoaded = true;
             _resultsInstanceId = instance.Id;
             _resultsKind = kind;
             _resultsQuery = query;
-
-            foreach (var item in items)
-                _ = item.LoadIconAsync(_cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -492,6 +517,85 @@ public partial class MainWindow : Window
         {
             if (generation == _searchGeneration)
                 StatusText.Text = "Ошибка поиска: " + ex.Message;
+        }
+    }
+
+    private void UpdateSearchMore()
+    {
+        var shown = _resultItems.Count;
+        var limit = Math.Min(_searchTotal, SearchMaxItems);
+        SearchMoreButton.IsVisible = shown < limit;
+        SearchMoreButton.Content = $"Показать ещё · {shown} из {limit}";
+
+        if (_searchTotal > SearchMaxItems && shown >= SearchMaxItems)
+            SearchCountText.Text = $"{_searchTotal} проектов · первые {SearchMaxItems}";
+        else if (_searchTotal > shown)
+            SearchCountText.Text = $"{_searchTotal} проектов · показано {shown}";
+        else
+            SearchCountText.Text = $"{_searchTotal} проектов";
+    }
+
+    private async void OnLoadMoreContent(object? sender, RoutedEventArgs e) => await LoadMoreContentAsync();
+
+    private async Task LoadMoreContentAsync()
+    {
+        if (_current is null)
+            return;
+
+        var limit = Math.Min(_searchTotal, SearchMaxItems);
+        if (_resultItems.Count >= limit)
+        {
+            UpdateSearchMore();
+            return;
+        }
+
+        var instance = _current;
+        var kind = _resultsKind;
+        var generation = _searchGeneration;
+        SearchMoreButton.IsEnabled = false;
+        StatusText.Text = "Загружаю ещё...";
+
+        try
+        {
+            var response = await _services.Modrinth.SearchAsync(
+                _resultsQuery, TypeOf(kind), instance.MinecraftVersion, LoaderTag(), _cts.Token,
+                SearchPageSize, _searchOffset);
+
+            if (generation != _searchGeneration)
+                return;
+
+            var installedIds = _services.Content.InstalledProjectIds(instance, kind);
+            foreach (var project in response.Hits)
+            {
+                if (_resultItems.Count >= SearchMaxItems)
+                    break;
+                if (_resultItems.Any(existing => existing.Project.Key == project.Key))
+                    continue;
+
+                var item = new SearchItem(project, TypeLabel(kind))
+                {
+                    Installed = installedIds.Contains(project.Key)
+                };
+                _resultItems.Add(item);
+                _ = item.LoadIconAsync(_cts.Token);
+            }
+
+            _searchOffset += response.Hits.Count;
+            _searchTotal = (int)response.TotalHits;
+            UpdateSearchMore();
+            StatusText.Text = $"Показано {_resultItems.Count} из {_searchTotal}";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (generation == _searchGeneration)
+                StatusText.Text = "Ошибка поиска: " + ex.Message;
+        }
+        finally
+        {
+            SearchMoreButton.IsEnabled = true;
         }
     }
 
@@ -521,6 +625,8 @@ public partial class MainWindow : Window
         if (!installed)
             return;
 
+        item.Installed = true;
+        UpdateSearchMarks();
         RefreshInstalled();
         StatusText.Text = $"Установлено: {item.Title}";
 
@@ -554,6 +660,8 @@ public partial class MainWindow : Window
             foreach (var key in _updates.Where(pair => pair.Value.ProjectId == item.Project.Key).Select(pair => pair.Key).ToList())
                 _updates.Remove(key);
 
+            item.Installed = true;
+            UpdateSearchMarks();
             RefreshInstalled();
             StatusText.Text = $"Установлено: {item.Title} → {ContentService.FolderFor(kind)}"
                               + (_game is { HasExited: false } ? " (применится после перезапуска игры)" : "");
@@ -674,6 +782,42 @@ public partial class MainWindow : Window
         }
     }
 
+    private void UpdateSearchMarks()
+    {
+        if (_current is null)
+            return;
+
+        var ids = _services.Content.InstalledProjectIds(_current, _resultsKind);
+        foreach (var item in _resultItems)
+            item.Installed = ids.Contains(item.Project.Key);
+    }
+
+    private void OnDeleteInstalled(object? sender, RoutedEventArgs e)
+    {
+        if (_current is null || sender is not Button { DataContext: InstalledItem item })
+            return;
+
+        if (!item.ConfirmDelete)
+        {
+            item.ConfirmDelete = true;
+            StatusText.Text = $"Удалить «{item.Title}»? Нажмите «Точно?»";
+            return;
+        }
+
+        try
+        {
+            _services.Content.Delete(_current, item.Content);
+            _updates.Remove(item.FileName);
+            RefreshInstalled();
+            UpdateSearchMarks();
+            StatusText.Text = $"Удалено: {item.Title}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Не удалось удалить: " + ex.Message;
+        }
+    }
+
     private void RefreshInstalled()
     {
         var kindName = _kind switch
@@ -740,24 +884,31 @@ public partial class MainWindow : Window
     private async Task RunModpackSearchAsync()
     {
         var generation = ++_modpackGeneration;
+        ModpackMoreButton.IsVisible = false;
         StatusText.Text = "Поиск сборок...";
 
         try
         {
             var response = await _services.Modrinth.SearchAsync(
-                ModpackSearchBox.Text ?? "", "modpack", "", null, _cts.Token);
+                ModpackSearchBox.Text ?? "", "modpack", "", null, _cts.Token, SearchPageSize, 0);
 
             if (generation != _modpackGeneration)
                 return;
 
-            var items = response.Hits.Select(hit => new SearchItem(hit, "Модпак")).ToList();
-            ModpackList.ItemsSource = items;
-            ModpackCountText.Text = $"{response.TotalHits} сборок";
+            _modpackItems = new ObservableCollection<SearchItem>();
+            foreach (var hit in response.Hits)
+            {
+                var item = new SearchItem(hit, "Модпак");
+                _modpackItems.Add(item);
+                _ = item.LoadIconAsync(_cts.Token);
+            }
+
+            ModpackList.ItemsSource = _modpackItems;
+            _modpackOffset = response.Hits.Count;
+            _modpackTotal = (int)response.TotalHits;
+            UpdateModpackMore();
             _modpacksLoaded = true;
             StatusText.Text = "Готово";
-
-            foreach (var item in items)
-                _ = item.LoadIconAsync(_cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -766,6 +917,75 @@ public partial class MainWindow : Window
         {
             if (generation == _modpackGeneration)
                 StatusText.Text = "Ошибка поиска: " + ex.Message;
+        }
+    }
+
+    private void UpdateModpackMore()
+    {
+        var shown = _modpackItems.Count;
+        var limit = Math.Min(_modpackTotal, SearchMaxItems);
+        ModpackMoreButton.IsVisible = shown < limit;
+        ModpackMoreButton.Content = $"Показать ещё · {shown} из {limit}";
+
+        if (_modpackTotal > SearchMaxItems && shown >= SearchMaxItems)
+            ModpackCountText.Text = $"{_modpackTotal} сборок · первые {SearchMaxItems}";
+        else if (_modpackTotal > shown)
+            ModpackCountText.Text = $"{_modpackTotal} сборок · показано {shown}";
+        else
+            ModpackCountText.Text = $"{_modpackTotal} сборок";
+    }
+
+    private async void OnLoadMoreModpacks(object? sender, RoutedEventArgs e) => await LoadMoreModpacksAsync();
+
+    private async Task LoadMoreModpacksAsync()
+    {
+        var limit = Math.Min(_modpackTotal, SearchMaxItems);
+        if (_modpackItems.Count >= limit)
+        {
+            UpdateModpackMore();
+            return;
+        }
+
+        var generation = _modpackGeneration;
+        ModpackMoreButton.IsEnabled = false;
+        StatusText.Text = "Загружаю ещё...";
+
+        try
+        {
+            var response = await _services.Modrinth.SearchAsync(
+                ModpackSearchBox.Text ?? "", "modpack", "", null, _cts.Token, SearchPageSize, _modpackOffset);
+
+            if (generation != _modpackGeneration)
+                return;
+
+            foreach (var hit in response.Hits)
+            {
+                if (_modpackItems.Count >= SearchMaxItems)
+                    break;
+                if (_modpackItems.Any(existing => existing.Project.Key == hit.Key))
+                    continue;
+
+                var item = new SearchItem(hit, "Модпак");
+                _modpackItems.Add(item);
+                _ = item.LoadIconAsync(_cts.Token);
+            }
+
+            _modpackOffset += response.Hits.Count;
+            _modpackTotal = (int)response.TotalHits;
+            UpdateModpackMore();
+            StatusText.Text = $"Показано {_modpackItems.Count} из {_modpackTotal}";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (generation == _modpackGeneration)
+                StatusText.Text = "Ошибка поиска: " + ex.Message;
+        }
+        finally
+        {
+            ModpackMoreButton.IsEnabled = true;
         }
     }
 

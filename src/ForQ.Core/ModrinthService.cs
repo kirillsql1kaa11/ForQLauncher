@@ -17,7 +17,8 @@ public sealed class ModrinthService
         string gameVersion,
         string? loader,
         CancellationToken ct,
-        int limit = 50)
+        int limit = 50,
+        int offset = 0)
     {
         var facets = new List<List<string>> { new() { "project_type:" + projectType } };
 
@@ -27,7 +28,7 @@ public sealed class ModrinthService
         foreach (var tag in LoaderTags(projectType, loader))
             facets.Add(new List<string> { "categories:" + tag });
 
-        return await SearchInternalAsync(query, facets, limit, null, ct);
+        return await SearchInternalAsync(query, facets, limit, offset, null, ct);
     }
 
     public async Task<ModrinthSearchResponse> SearchByCategoryAsync(
@@ -49,18 +50,19 @@ public sealed class ModrinthService
         foreach (var tag in LoaderTags(projectType, loader))
             facets.Add(new List<string> { "categories:" + tag });
 
-        return await SearchInternalAsync("", facets, limit, "downloads", ct);
+        return await SearchInternalAsync("", facets, limit, 0, "downloads", ct);
     }
 
     private async Task<ModrinthSearchResponse> SearchInternalAsync(
         string query,
         List<List<string>> facets,
         int limit,
+        int offset,
         string? index,
         CancellationToken ct)
     {
         var facetsJson = JsonSerializer.Serialize(facets);
-        var url = $"{BaseUrl}/search?query={Uri.EscapeDataString(query)}&facets={Uri.EscapeDataString(facetsJson)}&limit={limit}";
+        var url = $"{BaseUrl}/search?query={Uri.EscapeDataString(query)}&facets={Uri.EscapeDataString(facetsJson)}&limit={limit}&offset={offset}";
         if (!string.IsNullOrEmpty(index))
             url += "&index=" + index;
 

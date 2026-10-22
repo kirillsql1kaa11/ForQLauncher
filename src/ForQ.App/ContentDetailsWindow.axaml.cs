@@ -21,6 +21,7 @@ public partial class ContentDetailsWindow : Window
     private ModrinthProjectDetails? _details;
     private ModrinthVersion? _version;
     private bool _installed;
+    private bool _projectInstalled;
 
     public ContentDetailsWindow() : this(string.Empty, "mod", null)
     {
@@ -136,10 +137,23 @@ public partial class ContentDetailsWindow : Window
             return;
         }
 
-        InstallButton.IsEnabled = true;
-        InstallButton.Content = _projectType == "modpack" ? "Установить сборку" : "Установить";
+        _projectInstalled = IsProjectInstalled();
+        InstallButton.IsEnabled = !_projectInstalled;
+        InstallButton.Content = _projectType == "modpack"
+            ? "Установить сборку"
+            : _projectInstalled ? "Установлено" : "Установить";
         var size = ModrinthService.PrimaryFile(_version).Size;
-        StatusText.Text = $"Версия {(_version.VersionNumber.Length > 0 ? _version.VersionNumber : _version.Name)} · {size / 1048576.0:F1} МБ";
+        var versionLabel = _version.VersionNumber.Length > 0 ? _version.VersionNumber : _version.Name;
+        StatusText.Text = _projectInstalled
+            ? $"Уже установлено · {versionLabel} · {size / 1048576.0:F1} МБ"
+            : $"Версия {versionLabel} · {size / 1048576.0:F1} МБ";
+    }
+
+    private bool IsProjectInstalled()
+    {
+        if (_instance is null || _projectType == "modpack")
+            return false;
+        return _services.Content.InstalledProjectIds(_instance, KindOf(_projectType)).Contains(_projectId);
     }
 
     private async Task LoadDependenciesAsync()
@@ -275,7 +289,9 @@ public partial class ContentDetailsWindow : Window
                 StatusText.Text = $"Установлено в {ContentService.FolderFor(kind)}";
             }
 
-            InstallButton.Content = "Установить ещё раз";
+            if (_projectType != "modpack")
+                _projectInstalled = true;
+            InstallButton.Content = _projectInstalled ? "Установлено" : "Установить сборку";
         }
         catch (OperationCanceledException)
         {
@@ -287,7 +303,7 @@ public partial class ContentDetailsWindow : Window
         finally
         {
             Progress.IsVisible = false;
-            InstallButton.IsEnabled = true;
+            InstallButton.IsEnabled = _version is not null && !_projectInstalled;
         }
     }
 

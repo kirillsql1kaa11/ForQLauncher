@@ -178,6 +178,34 @@ public sealed class ContentService
         return result;
     }
 
+    public HashSet<string> InstalledProjectIds(Instance instance, ContentKind kind)
+    {
+        var directory = Path.Combine(instance.Folder, FolderFor(kind));
+        return LoadLibrary(instance).Items
+            .Where(record => record.Kind == kind && !string.IsNullOrWhiteSpace(record.ProjectId))
+            .Where(record => File.Exists(Path.Combine(directory, record.FileName))
+                             || File.Exists(Path.Combine(directory, record.FileName + ".disabled")))
+            .Select(record => record.ProjectId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void Delete(Instance instance, InstalledContent content)
+    {
+        if (File.Exists(content.Path))
+            File.Delete(content.Path);
+
+        if (content.Kind == ContentKind.ResourcePack)
+            GameOptions.SetPackEnabled(instance.OptionsPath, content.FileName, false);
+        else if (content.Kind == ContentKind.Shader
+                 && string.Equals(GameOptions.GetShader(instance.OptionsPath), content.FileName, StringComparison.OrdinalIgnoreCase))
+            GameOptions.SetShader(instance.OptionsPath, null);
+
+        var library = LoadLibrary(instance);
+        library.Items.RemoveAll(record => record.Kind == content.Kind
+                                          && string.Equals(record.FileName, content.FileName, StringComparison.OrdinalIgnoreCase));
+        SaveLibrary(instance, library);
+    }
+
     public void SetEnabled(Instance instance, InstalledContent content, bool enabled)
     {
         switch (content.Kind)
