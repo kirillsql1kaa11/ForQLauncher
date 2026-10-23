@@ -19,14 +19,15 @@ public sealed class AppServices : IDisposable
         Runtime = new RuntimeService(Http);
         Loaders = new LoaderService(Http);
         Modrinth = new ModrinthService(Http);
-        Content = new ContentService(Http);
-        Conflicts = new ModConflictService(Content);
         Downloads = new DownloadManager(Http);
+        Content = new ContentService(Downloads);
+        Conflicts = new ModConflictService(Content);
+        Crashes = new CrashAnalyzer(Content);
         Instances = new InstanceService(Root);
         Installer = new GameInstaller(Mojang, Assets, Runtime, Loaders, Downloads, Http);
         Launcher = new LaunchService(Mojang, Runtime, Downloads);
-        Modpacks = new ModpackService(Http, Instances, Installer);
-        Updates = new UpdateService(Http);
+        Modpacks = new ModpackService(Instances, Installer, Downloads);
+        Updates = new UpdateService(Http, Downloads);
         Translation = new TranslationService(Http, Path.Combine(CacheDirectory, "translations.json"));
         Settings = Instances.LoadSettings();
     }
@@ -41,6 +42,7 @@ public sealed class AppServices : IDisposable
     public ModrinthService Modrinth { get; }
     public ContentService Content { get; }
     public ModConflictService Conflicts { get; }
+    public CrashAnalyzer Crashes { get; }
     public DownloadManager Downloads { get; }
     public InstanceService Instances { get; }
     public GameInstaller Installer { get; }

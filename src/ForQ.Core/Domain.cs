@@ -50,6 +50,7 @@ public sealed class AppSettings
     [JsonPropertyName("blockTelemetry")] public bool BlockTelemetry { get; set; } = true;
     [JsonPropertyName("javaPath")] public string? JavaPath { get; set; }
     [JsonPropertyName("downloadThreads")] public int DownloadThreads { get; set; } = 8;
+    [JsonPropertyName("downloadSpeedLimitKbps")] public int DownloadSpeedLimitKbps { get; set; }
     [JsonPropertyName("lastInstanceId")] public string LastInstanceId { get; set; } = "";
     [JsonPropertyName("rootPath")] public string? RootPath { get; set; }
     [JsonPropertyName("autoCheckUpdates")] public bool AutoCheckUpdates { get; set; } = true;

@@ -27,6 +27,7 @@ public sealed class SearchItem : ObservableBase
 {
     private Bitmap? _icon;
     private bool _installed;
+    private bool _selected;
 
     public SearchItem(ModrinthProject project, string typeLabel)
     {
@@ -61,6 +62,12 @@ public sealed class SearchItem : ObservableBase
             Raise(nameof(NotInstalled));
             Raise(nameof(InstallLabel));
         }
+    }
+
+    public bool Selected
+    {
+        get => _selected;
+        set => Set(ref _selected, value);
     }
 
     public bool NotInstalled => !_installed;

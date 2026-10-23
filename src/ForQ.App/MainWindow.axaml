@@ -122,50 +122,66 @@
 
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
                             <Button Classes="ghost" Content="Очистить журнал" Click="OnClearLog" />
+                            <Button Classes="ghost" Content="Разбор краша" Click="OnAnalyzeCrash" />
                             <Button Classes="danger" Content="Остановить игру" Click="OnStopGame" />
                         </StackPanel>
                     </Grid>
                 </TabItem>
 
                 <TabItem Header="Контент">
-                    <Grid ColumnDefinitions="*,340" RowDefinitions="Auto,Auto,*">
+                    <Grid ColumnDefinitions="*,340" RowDefinitions="Auto,Auto,Auto,*">
 
-                        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="0,0,0,8">
+                        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
                                 <Button x:Name="SegMods" Classes="segment active" Content="Моды" Click="OnKindChanged" />
                                 <Button x:Name="SegPacks" Classes="segment" Content="Ресурспаки" Click="OnKindChanged" />
                                 <Button x:Name="SegShaders" Classes="segment" Content="Шейдеры" Click="OnKindChanged" />
                             </StackPanel>
-                            <TextBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="Поиск по Modrinth" KeyDown="OnSearchKey" />
+                            <TextBox Grid.Column="1" x:Name="SearchBox" MinWidth="160" PlaceholderText="Поиск по Modrinth" KeyDown="OnSearchKey" />
                             <Button Grid.Column="2" Content="Найти" Click="OnSearch" Margin="8,0,0,0" />
-                            <Button Grid.Column="3" x:Name="ConflictsButton" Content="Конфликты" Click="OnCheckConflicts"
-                                    Classes="ghost" Margin="8,0,0,0"
-                                    ToolTip.Tip="Проверить несовместимости и дубликаты модов" />
-                            <Button Grid.Column="4" x:Name="CheckUpdatesButton" Content="Обновления" Click="OnCheckUpdates"
-                                    Classes="ghost" Margin="8,0,0,0" />
                         </Grid>
 
                         <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                            <TextBlock Grid.Column="0" x:Name="FilterText" Classes="hint" Text="Выберите профиль" />
-                            <TextBlock Grid.Column="1" x:Name="SearchCountText" Classes="hint" />
+                            <TextBlock Grid.Column="0" x:Name="FilterText" Classes="hint" Text="Выберите профиль"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="BatchInstallButton" Content="Установить выбранные" Click="OnBatchInstall"
+                                        Classes="accent" IsVisible="False" />
+                                <Button Content="Ссылка" Click="OnInstallLink"
+                                        ToolTip.Tip="Установить проект Modrinth или файл по прямой ссылке" />
+                                <Button x:Name="ConflictsButton" Content="Конфликты" Click="OnCheckConflicts"
+                                        Classes="ghost"
+                                        ToolTip.Tip="Проверить несовместимости и дубликаты модов" />
+                                <Button x:Name="CheckUpdatesButton" Content="Обновления" Click="OnCheckUpdates"
+                                        Classes="ghost" />
+                            </StackPanel>
                         </Grid>
 
-                        <Grid Grid.Row="2" Grid.Column="0" RowDefinitions="*,Auto" Margin="0,0,12,0">
+                        <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <TextBlock Grid.Column="0" Classes="hint" Text="Перетащите .jar или .mrpack в окно"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1" x:Name="SearchCountText" Classes="hint" Margin="14,0,0,0" />
+                        </Grid>
+
+                        <Grid Grid.Row="3" Grid.Column="0" RowDefinitions="*,Auto" Margin="0,0,12,0">
                         <ListBox x:Name="ResultsList">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto"
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="11" RowDefinitions="Auto,Auto,Auto"
                                           Background="Transparent" Cursor="Hand" PointerReleased="OnResultClick">
-                                        <Border Grid.RowSpan="3" Width="46" Height="46" CornerRadius="8" ClipToBounds="True"
+                                        <CheckBox Grid.Column="0" Grid.RowSpan="3" IsChecked="{Binding Selected}"
+                                                  IsVisible="{Binding NotInstalled}" Click="OnResultSelected"
+                                                  VerticalAlignment="Center" />
+                                        <Border Grid.Column="1" Grid.RowSpan="3" Width="46" Height="46" CornerRadius="8" ClipToBounds="True"
                                                 Background="{StaticResource SurfaceAltBrush}" VerticalAlignment="Top">
                                             <Image Source="{Binding Icon}" Stretch="UniformToFill" />
                                         </Border>
-                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold"
+                                        <TextBlock Grid.Column="2" Text="{Binding Title}" FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Description}" Classes="muted"
+                                        <TextBlock Grid.Column="2" Grid.Row="1" Text="{Binding Description}" Classes="muted"
                                                    TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" Height="34" />
-                                        <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
-                                        <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
+                                        <TextBlock Grid.Column="2" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
+                                        <StackPanel Grid.Column="3" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
                                             <Button Content="Установить" Classes="accent" Click="OnInstallContent" FontSize="12" Padding="12,6"
                                                     IsVisible="{Binding NotInstalled}" />
                                             <Button Content="Установлено" Click="OnInstallContent" FontSize="12" Padding="12,6"
@@ -179,7 +195,7 @@
                                     HorizontalAlignment="Center" Margin="0,8,0,0" IsVisible="False" Click="OnLoadMoreContent" />
                         </Grid>
 
-                        <Border Grid.Row="2" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
+                        <Border Grid.Row="3" Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14">
                             <Grid RowDefinitions="Auto,Auto,*">
                                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
                                     <TextBlock x:Name="InstalledTitle" Text="УСТАНОВЛЕНО" Classes="section" VerticalAlignment="Center" />
@@ -296,6 +312,10 @@
                                     <TextBlock Text="Потоков загрузки" Classes="muted" />
                                     <TextBox x:Name="ThreadsBox" Text="8" />
                                 </StackPanel>
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Лимит скорости, КБ/с (0 — без лимита)" Classes="muted" />
+                                    <TextBox x:Name="SpeedLimitBox" Text="0" />
+                                </StackPanel>
                             </StackPanel>
 
                             <Button Content="Сохранить настройки" Classes="accent" HorizontalAlignment="Left" Click="OnSaveSettings" />
@@ -309,11 +329,15 @@
         </Grid>
 
         <Border x:Name="Overlay" Grid.ColumnSpan="2" IsVisible="False" Background="#E60E1116">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" Width="380">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" Width="540">
                 <TextBlock x:Name="OverlayTitle" Text="Установка" Classes="title" HorizontalAlignment="Center" />
                 <TextBlock x:Name="OverlayStatus" Classes="muted" TextAlignment="Center" TextWrapping="Wrap" />
-                <TextBlock x:Name="OverlayProgress" Classes="hint" TextAlignment="Center" />
+                <TextBlock x:Name="OverlayProgress" Classes="hint" TextAlignment="Center" TextWrapping="Wrap" />
                 <ProgressBar x:Name="OverlayBar" IsIndeterminate="True" />
+                <StackPanel x:Name="OverlayDownloadControls" Orientation="Horizontal" HorizontalAlignment="Center"
+                            Spacing="8" IsVisible="False">
+                    <Button x:Name="OverlayPauseButton" Content="Пауза" Classes="ghost" Click="OnToggleDownloadPause" />
+                </StackPanel>
             </StackPanel>
         </Border>
     </Grid>

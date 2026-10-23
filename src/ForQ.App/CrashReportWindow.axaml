@@ -1,0 +1,74 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.CrashReportWindow"
+        Title="Разбор краша"
+        Width="780" Height="700" MinWidth="580" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Row="0" Margin="24,22,24,14" Spacing="5">
+            <TextBlock Text="РАЗБОР КРАША" Classes="section" />
+            <TextBlock x:Name="SummaryText" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock x:Name="SourceText" Classes="hint" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Margin="24,0,24,0" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="16">
+                <Border x:Name="SuspectPanel" Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderSoftBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="14,12">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="ВЕРОЯТНЫЙ ВИНОВНИК" Classes="hint" />
+                        <TextBlock x:Name="SuspectText" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="SuspectFileText" Classes="hint" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="ПРИЧИНА" Classes="section" />
+                    <TextBlock x:Name="CauseText" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="ЧТО СДЕЛАТЬ" Classes="section" />
+                    <ItemsControl x:Name="RecommendationsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,6">
+                                    <TextBlock Text="•" Margin="0,0,8,0" Foreground="{StaticResource AccentBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding}" TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="СТЕК ВЫЗОВОВ" Classes="section" />
+                    <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource BorderSoftBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12">
+                        <ScrollViewer MaxHeight="260" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="StackText" Classes="mono" TextWrapping="NoWrap" />
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+
+                <Expander Header="Фрагмент лога">
+                    <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource BorderSoftBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,8,0,0">
+                        <ScrollViewer MaxHeight="320" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="DetailsText" Classes="mono" TextWrapping="NoWrap" />
+                        </ScrollViewer>
+                    </Border>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Spacing="8" Margin="24,16,24,22">
+            <Button Content="Открыть папку логов" Classes="ghost" Click="OnOpenLogs" />
+            <Button Content="Закрыть" Classes="accent" Click="OnClose" />
+        </StackPanel>
+    </Grid>
+</Window>

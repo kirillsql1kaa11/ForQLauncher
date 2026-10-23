@@ -25,6 +25,8 @@ public sealed class HttpApi : IDisposable
         _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
     }
 
+    public DownloadControl Downloads { get; } = new();
+
     private const int MaxAttempts = 3;
 
     public async Task<string> GetStringAsync(string url, CancellationToken ct)
@@ -155,29 +157,44 @@ public sealed class HttpApi : IDisposable
     private async Task DownloadOnceAsync(string url, string destination, string expectedSha1, CancellationToken ct,
         Action<long>? onBytes)
     {
-        using var request = CreateGet(url);
-        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
-
-        await using (var input = await response.Content.ReadAsStreamAsync(ct))
-        await using (var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16, true))
+        long reported = 0;
+        var completed = false;
+        try
         {
-            var buffer = new byte[1 << 16];
-            while (true)
+            using var request = CreateGet(url);
+            using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            response.EnsureSuccessStatusCode();
+
+            await using (var input = await response.Content.ReadAsStreamAsync(ct))
+            await using (var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16, true))
             {
-                var read = await input.ReadAsync(buffer, ct);
-                if (read == 0)
-                    break;
-                await output.WriteAsync(buffer.AsMemory(0, read), ct);
-                onBytes?.Invoke(read);
+                var buffer = new byte[1 << 16];
+                while (true)
+                {
+                    await Downloads.WaitIfPausedAsync(ct);
+                    var read = await input.ReadAsync(buffer, ct);
+                    if (read == 0)
+                        break;
+                    await Downloads.ThrottleAsync(read, ct);
+                    await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                    onBytes?.Invoke(read);
+                    reported += read;
+                }
+                await output.FlushAsync(ct);
             }
-            await output.FlushAsync(ct);
-        }
 
-        if (!string.IsNullOrEmpty(expectedSha1) && !Sha1Equals(destination, expectedSha1))
+            if (!string.IsNullOrEmpty(expectedSha1) && !Sha1Equals(destination, expectedSha1))
+            {
+                File.Delete(destination);
+                throw new InvalidDataException($"Контрольная сумма не совпала: {Path.GetFileName(destination)}");
+            }
+
+            completed = true;
+        }
+        finally
         {
-            File.Delete(destination);
-            throw new InvalidDataException($"Контрольная сумма не совпала: {Path.GetFileName(destination)}");
+            if (!completed && reported > 0)
+                onBytes?.Invoke(-reported);
         }
     }
 

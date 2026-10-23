@@ -18,6 +18,19 @@ public sealed class ModConflict
     public string Details { get; init; } = "";
 }
 
+public sealed class ModDependent
+{
+    public string Title { get; init; } = "";
+    public string FileName { get; init; } = "";
+    public string DependencyId { get; init; } = "";
+    public string RequiredRange { get; init; } = "";
+    public bool Enabled { get; init; }
+    public string Status => Enabled ? "включён" : "отключён";
+    public string Dependency => string.IsNullOrWhiteSpace(RequiredRange)
+        ? $"требует {DependencyId}"
+        : $"требует {DependencyId} {RequiredRange}";
+}
+
 public sealed class ModConflictService
 {
     private static readonly Regex ModsBlock = new(
@@ -164,6 +177,63 @@ public sealed class ModConflictService
         return new ModConflictReport { ModCount = files.Count, Conflicts = conflicts };
     }
 
+    public IReadOnlyList<ModDependent> FindDependents(Instance instance, InstalledContent target)
+    {
+        var targetIdentities = ReadIdentities(target.Path);
+        if (targetIdentities.Count == 0)
+            return Array.Empty<ModDependent>();
+
+        var targetVersions = targetIdentities
+            .Where(identity => !string.IsNullOrWhiteSpace(identity.Id))
+            .GroupBy(identity => identity.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Version, StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<ModDependent>();
+        var installed = _content.ListInstalled(instance)
+            .Where(item => item.Kind == ContentKind.Mod)
+            .Where(item => !string.Equals(item.FileName, target.FileName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var candidate in installed)
+        {
+            foreach (var identity in ReadIdentities(candidate.Path))
+            {
+                foreach (var dependency in identity.Depends)
+                {
+                    if (IsRuntimeDependency(dependency.ModId))
+                        continue;
+
+                    if (!targetVersions.TryGetValue(dependency.ModId, out var targetVersion))
+                        continue;
+
+                    if (!string.IsNullOrWhiteSpace(dependency.Range)
+                        && dependency.Range != "*"
+                        && !string.IsNullOrWhiteSpace(targetVersion)
+                        && !VersionRange.Matches(targetVersion, dependency.Range))
+                        continue;
+
+                    if (result.Any(item => string.Equals(item.FileName, candidate.FileName, StringComparison.OrdinalIgnoreCase)
+                                           && string.Equals(item.DependencyId, dependency.ModId, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    result.Add(new ModDependent
+                    {
+                        Title = string.IsNullOrWhiteSpace(identity.Name) ? candidate.DisplayName : identity.Name,
+                        FileName = candidate.FileName,
+                        DependencyId = dependency.ModId,
+                        RequiredRange = dependency.Range,
+                        Enabled = candidate.Enabled
+                    });
+                }
+            }
+        }
+
+        return result
+            .OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.FileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static string FileSetKey(IEnumerable<ModFile> files)
         => string.Join("|", files
             .Select(file => file.FileName)
@@ -222,6 +292,7 @@ public sealed class ModConflictService
         };
 
         identity.Breaks.AddRange(ReadObjectBreaks(root, "breaks"));
+        identity.Depends.AddRange(ReadObjectDependencies(root, "depends"));
         return identity;
     }
 
@@ -263,15 +334,69 @@ public sealed class ModConflictService
                 if (string.IsNullOrWhiteSpace(target))
                     continue;
 
-                var range = GetString(item, "versions");
-                if (string.IsNullOrWhiteSpace(range))
-                    range = GetString(item, "version");
-
-                identity.Breaks.Add(new DeclaredBreak(target, range));
+                identity.Breaks.Add(new DeclaredBreak(target, ReadQuiltRange(item)));
             }
         }
 
+        if (loader.TryGetProperty("depends", out var depends))
+            identity.Depends.AddRange(ReadQuiltDependencies(depends));
+
         return identity;
+    }
+
+    private static IEnumerable<DeclaredDependency> ReadObjectDependencies(JsonElement root, string property)
+    {
+        if (!root.TryGetProperty(property, out var dependencies) || dependencies.ValueKind != JsonValueKind.Object)
+            yield break;
+
+        foreach (var item in dependencies.EnumerateObject())
+        {
+            if (!string.IsNullOrWhiteSpace(item.Name))
+                yield return new DeclaredDependency(item.Name, ReadQuiltRange(item.Value));
+        }
+    }
+
+    private static IEnumerable<DeclaredDependency> ReadQuiltDependencies(JsonElement dependencies)
+    {
+        if (dependencies.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var item in dependencies.EnumerateObject())
+            {
+                if (!string.IsNullOrWhiteSpace(item.Name))
+                    yield return new DeclaredDependency(item.Name, ReadQuiltRange(item.Value));
+            }
+            yield break;
+        }
+
+        if (dependencies.ValueKind != JsonValueKind.Array)
+            yield break;
+
+        foreach (var item in dependencies.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var id = GetString(item, "id");
+            if (!string.IsNullOrWhiteSpace(id))
+                yield return new DeclaredDependency(id, ReadQuiltRange(item));
+        }
+    }
+
+    private static string ReadQuiltRange(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString() ?? "",
+            JsonValueKind.Array => string.Join(" || ", element
+                .EnumerateArray()
+                .Where(value => value.ValueKind == JsonValueKind.String)
+                .Select(value => value.GetString())
+                .Where(value => !string.IsNullOrWhiteSpace(value))),
+            JsonValueKind.Object => GetString(element, "versions") is { Length: > 0 } versions
+                ? versions
+                : GetString(element, "version"),
+            _ => ""
+        };
     }
 
     private static IEnumerable<DeclaredBreak> ReadObjectBreaks(JsonElement root, string property)
@@ -329,6 +454,7 @@ public sealed class ModConflictService
             return identities;
 
         var breaks = new Dictionary<string, List<DeclaredBreak>>(StringComparer.OrdinalIgnoreCase);
+        var depends = new Dictionary<string, List<DeclaredDependency>>(StringComparer.OrdinalIgnoreCase);
         foreach (Match match in DependencyBlock.Matches(text))
         {
             var owner = match.Groups["owner"].Value.Trim();
@@ -336,28 +462,52 @@ public sealed class ModConflictService
             var target = TomlValue(body, "modId");
             var type = TomlValue(body, "type");
 
-            if (string.IsNullOrWhiteSpace(owner)
-                || string.IsNullOrWhiteSpace(target)
-                || !string.Equals(type, "incompatible", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(target))
                 continue;
 
-            if (!breaks.TryGetValue(owner, out var list))
+            var range = TomlValue(body, "versionRange");
+            if (string.Equals(type, "incompatible", StringComparison.OrdinalIgnoreCase))
             {
-                list = new List<DeclaredBreak>();
-                breaks[owner] = list;
-            }
+                if (!breaks.TryGetValue(owner, out var list))
+                {
+                    list = new List<DeclaredBreak>();
+                    breaks[owner] = list;
+                }
 
-            list.Add(new DeclaredBreak(target, TomlValue(body, "versionRange")));
+                list.Add(new DeclaredBreak(target, range));
+            }
+            else if (string.Equals(type, "required", StringComparison.OrdinalIgnoreCase)
+                     && !IsRuntimeDependency(target))
+            {
+                if (!depends.TryGetValue(owner, out var list))
+                {
+                    list = new List<DeclaredDependency>();
+                    depends[owner] = list;
+                }
+
+                list.Add(new DeclaredDependency(target, range));
+            }
         }
 
         foreach (var identity in identities)
         {
-            if (breaks.TryGetValue(identity.Id, out var list))
-                identity.Breaks.AddRange(list);
+            if (breaks.TryGetValue(identity.Id, out var breakList))
+                identity.Breaks.AddRange(breakList);
+            if (depends.TryGetValue(identity.Id, out var dependencyList))
+                identity.Depends.AddRange(dependencyList);
         }
 
         return identities;
     }
+
+    private static bool IsRuntimeDependency(string id)
+        => id.Equals("minecraft", StringComparison.OrdinalIgnoreCase)
+           || id.Equals("forge", StringComparison.OrdinalIgnoreCase)
+           || id.Equals("neoforge", StringComparison.OrdinalIgnoreCase)
+           || id.Equals("fabricloader", StringComparison.OrdinalIgnoreCase)
+           || id.Equals("quilt_loader", StringComparison.OrdinalIgnoreCase)
+           || id.Equals("quilted_loader", StringComparison.OrdinalIgnoreCase)
+           || id.Equals("java", StringComparison.OrdinalIgnoreCase);
 
     private static List<ModIdentity> ReadMcModInfo(ZipArchive archive)
     {
@@ -426,6 +576,8 @@ public sealed class ModConflictService
 
     private sealed record DeclaredBreak(string ModId, string Range);
 
+    private sealed record DeclaredDependency(string ModId, string Range);
+
     private sealed record ModEntry(ModFile File, ModIdentity Identity);
 
     private sealed class ModFile
@@ -442,5 +594,6 @@ public sealed class ModConflictService
         public string Name { get; init; } = "";
         public string Version { get; init; } = "";
         public List<DeclaredBreak> Breaks { get; } = new();
+        public List<DeclaredDependency> Depends { get; } = new();
     }
 }

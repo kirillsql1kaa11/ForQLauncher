@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.ModDependentsWindow"
+        Title="Зависимые моды"
+        Width="660" Height="540" MinWidth="520" MinHeight="360"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Row="0" Margin="24,22,24,14" Spacing="6">
+            <TextBlock Text="ЗАВИСИМОСТИ МОДА" Classes="section" />
+            <TextBlock x:Name="SummaryText" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Classes="hint" TextWrapping="Wrap"
+                       Text="Эти установленные моды требуют удаляемый мод. Без него они могут не запуститься или выдать ошибку при старте." />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Margin="24,0,24,0" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="DependentsList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{StaticResource SurfaceAltBrush}"
+                                BorderBrush="{StaticResource BorderSoftBrush}" BorderThickness="1"
+                                CornerRadius="8" Padding="13,11" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="1" Text="{Binding Status}" Classes="hint" Margin="12,0,0,0" />
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding FileName}" Classes="hint"
+                                           TextWrapping="Wrap" Margin="0,2,0,0" />
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Dependency}" Classes="muted"
+                                           TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Spacing="8" Margin="24,16,24,22">
+            <Button Content="Отмена" Classes="ghost" Click="OnCancel" />
+            <Button Content="Удалить всё равно" Classes="danger" Click="OnDeleteAnyway" />
+        </StackPanel>
+    </Grid>
+</Window>

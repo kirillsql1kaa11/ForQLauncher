@@ -5,15 +5,15 @@ namespace ForQ.Core;
 
 public sealed class ModpackService
 {
-    private readonly HttpApi _http;
     private readonly InstanceService _instances;
     private readonly GameInstaller _installer;
+    private readonly DownloadManager _downloads;
 
-    public ModpackService(HttpApi http, InstanceService instances, GameInstaller installer)
+    public ModpackService(InstanceService instances, GameInstaller installer, DownloadManager downloads)
     {
-        _http = http;
         _instances = instances;
         _installer = installer;
+        _downloads = downloads;
     }
 
     public async Task<Instance> InstallAsync(
@@ -30,10 +30,32 @@ public sealed class ModpackService
         Directory.CreateDirectory(tempDirectory);
         var archivePath = Path.Combine(tempDirectory, file.Filename);
 
-        log?.Invoke($"Скачивание сборки {packTitle}...");
-        await _http.DownloadFileAsync(file.Url, archivePath, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), ct, bytes =>
-            progress?.Report(new DownloadState(file.Filename, bytes, file.Size, false)));
+        try
+        {
+            log?.Invoke($"Скачивание сборки {packTitle}...");
+            await _downloads.RunAsync(
+                new[] { new DownloadItem(file.Url, archivePath, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), file.Filename) },
+                1,
+                progress,
+                ct);
 
+            return await InstallArchiveAsync(archivePath, packTitle, packIcon, projectId, log, progress, ct);
+        }
+        finally
+        {
+            TryDelete(archivePath);
+        }
+    }
+
+    public async Task<Instance> InstallArchiveAsync(
+        string archivePath,
+        string packTitle,
+        string? packIcon,
+        string? projectId,
+        Action<string>? log,
+        IProgress<DownloadState>? progress,
+        CancellationToken ct)
+    {
         var index = ReadIndex(archivePath);
         var (loader, loaderVersion, minecraftVersion) = ReadLoader(index);
 
@@ -61,33 +83,27 @@ public sealed class ModpackService
             }
 
             var files = index.Files
-                .Where(f => !string.Equals(f.Env?.Client, "unsupported", StringComparison.OrdinalIgnoreCase))
-                .Where(f => f.Downloads.Count > 0)
+                .Where(file => !string.Equals(file.Env?.Client, "unsupported", StringComparison.OrdinalIgnoreCase))
+                .Where(file => file.Downloads.Count > 0)
                 .ToList();
 
-            var total = files.Sum(f => Math.Max(0, f.FileSize));
-            var done = 0L;
-            var position = 0;
-
+            var downloadItems = new List<DownloadItem>();
             foreach (var packFile in files)
             {
-                position++;
                 var destination = SafePath(instance.Folder, packFile.Path);
                 if (destination is null)
                     continue;
 
-                log?.Invoke($"Файлы сборки {position}/{files.Count}: {Path.GetFileName(packFile.Path)}");
-
-                var current = packFile;
-                await _http.DownloadFileAsync(current.Downloads[0], destination, current.FileSize,
-                    current.Hashes.GetValueOrDefault("sha1", ""), ct, bytes =>
-                    {
-                        var processed = Interlocked.Add(ref done, bytes);
-                        progress?.Report(new DownloadState(Path.GetFileName(current.Path), processed, total, false));
-                    });
+                downloadItems.Add(new DownloadItem(
+                    packFile.Downloads[0],
+                    destination,
+                    packFile.FileSize,
+                    packFile.Hashes.GetValueOrDefault("sha1", ""),
+                    Path.GetFileName(packFile.Path)));
             }
 
-            progress?.Report(new DownloadState(index.Name, total, total, false));
+            log?.Invoke($"Скачивание файлов сборки ({downloadItems.Count})...");
+            await _downloads.RunAsync(downloadItems, 8, progress, ct);
 
             log?.Invoke("Распаковка настроек и конфигов...");
             ExtractOverrides(archivePath, instance.Folder, "overrides");
@@ -102,10 +118,6 @@ public sealed class ModpackService
             if (instance is not null)
                 _instances.Delete(instance);
             throw;
-        }
-        finally
-        {
-            TryDelete(archivePath);
         }
     }
 

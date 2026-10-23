@@ -8,8 +8,13 @@ public sealed class UpdateService
     public const string Repository = "kirillsql1kaa11/ForQLauncher";
 
     private readonly HttpApi _http;
+    private readonly DownloadManager _downloads;
 
-    public UpdateService(HttpApi http) => _http = http;
+    public UpdateService(HttpApi http, DownloadManager downloads)
+    {
+        _http = http;
+        _downloads = downloads;
+    }
 
     public async Task<GitHubRelease?> GetLatestAsync(CancellationToken ct)
     {
@@ -63,13 +68,12 @@ public sealed class UpdateService
     public async Task<string> DownloadAsync(GitHubAsset asset, IProgress<DownloadState>? progress, CancellationToken ct)
     {
         var destination = Path.Combine(Path.GetTempPath(), "ForQLauncher", "update", asset.Name);
-        var done = 0L;
 
-        await _http.DownloadFileAsync(asset.BrowserDownloadUrl, destination, asset.Size, "", ct, bytes =>
-        {
-            var current = Interlocked.Add(ref done, bytes);
-            progress?.Report(new DownloadState(asset.Name, current, asset.Size, false));
-        });
+        await _downloads.RunAsync(
+            new[] { new DownloadItem(asset.BrowserDownloadUrl, destination, asset.Size, "", asset.Name) },
+            1,
+            progress,
+            ct);
 
         return destination;
     }

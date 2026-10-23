@@ -1,12 +1,15 @@
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ForQ.Core;
 
 public sealed class ContentService
 {
-    private readonly HttpApi _http;
+    private readonly DownloadManager _downloads;
 
-    public ContentService(HttpApi http) => _http = http;
+    public ContentService(DownloadManager downloads) => _downloads = downloads;
 
     public static string FolderFor(ContentKind kind) => kind switch
     {
@@ -59,12 +62,11 @@ public sealed class ContentService
         }
 
         var destination = Path.Combine(directory, file.Filename);
-        var downloaded = 0L;
-        await _http.DownloadFileAsync(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), ct, bytes =>
-        {
-            var current = Interlocked.Add(ref downloaded, bytes);
-            progress?.Report(new DownloadState(file.Filename, current, file.Size, false));
-        });
+        await _downloads.RunAsync(
+            new[] { new DownloadItem(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), file.Filename) },
+            1,
+            progress,
+            ct);
 
         if (kind == ContentKind.ResourcePack)
             GameOptions.SetPackEnabled(instance.OptionsPath, file.Filename, true);
@@ -114,18 +116,21 @@ public sealed class ContentService
 
         foreach (var dependency in dependencies)
         {
+            var project = projects.FirstOrDefault(p => p.Id == dependency.ProjectId);
+            var dependencyType = string.IsNullOrWhiteSpace(project?.ProjectType)
+                ? projectType
+                : project.ProjectType;
             var dependencyVersion = await modrinth.PickVersionAsync(
-                dependency.ProjectId!, instance.MinecraftVersion, LoaderTag(instance), projectType, ct);
+                dependency.ProjectId!, instance.MinecraftVersion, LoaderTag(instance), dependencyType, ct);
             if (dependencyVersion is null)
                 continue;
 
-            var project = projects.FirstOrDefault(p => p.Id == dependency.ProjectId);
             var dependencySource = new ContentSource(
                 dependency.ProjectId!,
                 project?.Title ?? dependencyVersion.Name,
                 project?.IconUrl);
 
-            await InstallAsync(instance, dependencyVersion, kind, dependencySource, ct);
+            await InstallAsync(instance, dependencyVersion, KindOfProject(dependencyType), dependencySource, ct, progress);
         }
     }
 
@@ -225,6 +230,49 @@ public sealed class ContentService
                 GameOptions.SetShader(instance.OptionsPath, enabled ? content.FileName : null);
                 break;
         }
+    }
+
+    public async Task<InstalledContent> ImportAsync(Instance instance, string sourcePath, CancellationToken ct)
+    {
+        var info = ReadArchiveInfo(sourcePath);
+        var directory = Path.Combine(instance.Folder, FolderFor(info.Kind));
+        Directory.CreateDirectory(directory);
+
+        var fileName = UniqueFileName(directory, Path.GetFileName(sourcePath));
+        var destination = Path.Combine(directory, fileName);
+
+        await using (var input = File.OpenRead(sourcePath))
+        await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, true))
+            await input.CopyToAsync(output, ct);
+
+        if (info.Kind == ContentKind.ResourcePack)
+            GameOptions.SetPackEnabled(instance.OptionsPath, fileName, true);
+        else if (info.Kind == ContentKind.Shader)
+            GameOptions.SetShader(instance.OptionsPath, fileName);
+
+        var library = LoadLibrary(instance);
+        library.Items.RemoveAll(record => record.Kind == info.Kind
+                                          && string.Equals(record.FileName, fileName, StringComparison.OrdinalIgnoreCase));
+        library.Items.Add(new ContentRecord
+        {
+            FileName = fileName,
+            Kind = info.Kind,
+            Title = info.Title,
+            VersionNumber = info.Version,
+            InstalledAt = DateTimeOffset.Now
+        });
+        SaveLibrary(instance, library);
+
+        return new InstalledContent
+        {
+            FileName = fileName,
+            Path = destination,
+            Kind = info.Kind,
+            Enabled = true,
+            Size = new FileInfo(destination).Length,
+            Title = info.Title,
+            VersionNumber = info.Version
+        };
     }
 
     public async Task<List<ContentUpdate>> CheckUpdatesAsync(Instance instance, ModrinthService modrinth, CancellationToken ct)
@@ -345,12 +393,11 @@ public sealed class ContentService
         var destination = Path.Combine(directory, file.Filename);
         var wasEnabled = update.Content.Enabled;
 
-        var downloaded = 0L;
-        await _http.DownloadFileAsync(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), ct, bytes =>
-        {
-            var current = Interlocked.Add(ref downloaded, bytes);
-            progress?.Report(new DownloadState(file.Filename, current, file.Size, false));
-        });
+        await _downloads.RunAsync(
+            new[] { new DownloadItem(file.Url, destination, file.Size, file.Hashes.GetValueOrDefault("sha1", ""), file.Filename) },
+            1,
+            progress,
+            ct);
 
         if (!string.Equals(destination, update.Content.Path, StringComparison.OrdinalIgnoreCase) && File.Exists(update.Content.Path))
             File.Delete(update.Content.Path);
@@ -393,6 +440,133 @@ public sealed class ContentService
 
         SaveLibrary(instance, library);
     }
+
+    private static string UniqueFileName(string directory, string fileName)
+    {
+        if (!File.Exists(Path.Combine(directory, fileName)))
+            return fileName;
+
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        var extension = Path.GetExtension(fileName);
+        for (var index = 2; ; index++)
+        {
+            var candidate = $"{stem}-{index}{extension}";
+            if (!File.Exists(Path.Combine(directory, candidate)))
+                return candidate;
+        }
+    }
+
+    private static ArchiveInfo ReadArchiveInfo(string path)
+    {
+        using var archive = ZipFile.OpenRead(path);
+
+        var quilt = FindEntry(archive, "quilt.mod.json");
+        if (quilt is not null)
+        {
+            using var document = JsonDocument.Parse(ReadText(quilt));
+            var root = document.RootElement;
+            if (root.TryGetProperty("quilt_loader", out var loader) && loader.ValueKind == JsonValueKind.Object)
+            {
+                var name = loader.TryGetProperty("metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Object
+                    ? GetString(metadata, "name")
+                    : "";
+                return new ArchiveInfo(ContentKind.Mod, FallbackTitle(name, path), GetString(loader, "version"));
+            }
+        }
+
+        var fabric = FindEntry(archive, "fabric.mod.json");
+        if (fabric is not null)
+        {
+            using var document = JsonDocument.Parse(ReadText(fabric));
+            var root = document.RootElement;
+            return new ArchiveInfo(ContentKind.Mod, FallbackTitle(GetString(root, "name"), path), GetString(root, "version"));
+        }
+
+        var neoForge = FindEntry(archive, "META-INF/neoforge.mods.toml");
+        var forge = FindEntry(archive, "META-INF/mods.toml");
+        var forgeEntry = neoForge ?? forge;
+        if (forgeEntry is not null)
+            return ReadForgeInfo(forgeEntry, path);
+
+        var mcmod = FindEntry(archive, "mcmod.info");
+        if (mcmod is not null)
+            return ReadMcmodInfo(mcmod, path);
+
+        if (archive.Entries.Any(entry => entry.FullName.Replace('\\', '/')
+                .StartsWith("shaders/", StringComparison.OrdinalIgnoreCase)))
+            return new ArchiveInfo(ContentKind.Shader, Path.GetFileNameWithoutExtension(path), "");
+
+        if (FindEntry(archive, "pack.mcmeta") is not null)
+            return new ArchiveInfo(ContentKind.ResourcePack, Path.GetFileNameWithoutExtension(path), "");
+
+        throw new InvalidDataException($"Не удалось определить тип файла: {Path.GetFileName(path)}");
+    }
+
+    private static ArchiveInfo ReadForgeInfo(ZipArchiveEntry entry, string path)
+    {
+        var text = ReadText(entry);
+        var name = Regex.Match(text, @"(?m)^\s*displayName\s*=\s*[""'](?<value>.*?)[""']");
+        var version = Regex.Match(text, @"(?m)^\s*version\s*=\s*[""'](?<value>.*?)[""']");
+        return new ArchiveInfo(
+            ContentKind.Mod,
+            FallbackTitle(name.Success ? name.Groups["value"].Value : "", path),
+            version.Success ? version.Groups["value"].Value : "");
+    }
+
+    private static ArchiveInfo ReadMcmodInfo(ZipArchiveEntry entry, string path)
+    {
+        using var document = JsonDocument.Parse(ReadText(entry));
+        var root = document.RootElement;
+        var items = root.ValueKind == JsonValueKind.Array
+            ? root
+            : root.ValueKind == JsonValueKind.Object
+              && root.TryGetProperty("modList", out var list)
+              && list.ValueKind == JsonValueKind.Array
+                ? list
+                : default;
+
+        if (items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                    continue;
+                return new ArchiveInfo(
+                    ContentKind.Mod,
+                    FallbackTitle(GetString(item, "name"), path),
+                    GetString(item, "version"));
+            }
+        }
+
+        return new ArchiveInfo(ContentKind.Mod, Path.GetFileNameWithoutExtension(path), "");
+    }
+
+    private static string ReadText(ZipArchiveEntry entry)
+    {
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8, true);
+        return reader.ReadToEnd().TrimStart('\uFEFF');
+    }
+
+    private static ZipArchiveEntry? FindEntry(ZipArchive archive, string path)
+        => archive.Entries.FirstOrDefault(entry =>
+            string.Equals(entry.FullName.Replace('\\', '/'), path, StringComparison.OrdinalIgnoreCase));
+
+    private static string GetString(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? ""
+            : "";
+
+    private static string FallbackTitle(string title, string path)
+        => string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(path) : title;
+
+    private sealed record ArchiveInfo(ContentKind Kind, string Title, string Version);
+
+    private static ContentKind KindOfProject(string projectType) => projectType switch
+    {
+        "resourcepack" => ContentKind.ResourcePack,
+        "shader" => ContentKind.Shader,
+        _ => ContentKind.Mod
+    };
 
     private static string TypeOf(ContentKind kind) => kind switch
     {
