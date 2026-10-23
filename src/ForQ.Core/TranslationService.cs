@@ -8,6 +8,10 @@ public sealed class TranslationService
 {
     private const string Endpoint = "https://translate.googleapis.com/translate_a/single";
     private const int ChunkSize = 900;
+    private const int BatchSize = 8;
+
+    private static readonly Regex BatchMarker = new(
+        @"\[\[\[FORQ(?<index>\d+)\]\]\]", RegexOptions.Compiled);
 
     private readonly HttpApi _http;
     private readonly string _cachePath;
@@ -45,6 +49,81 @@ public sealed class TranslationService
         return result.ToString();
     }
 
+    public async Task<IReadOnlyList<string>> ToRussianBatchAsync(
+        IReadOnlyList<string> texts,
+        CancellationToken ct,
+        IProgress<(int Index, string Text)>? progress = null)
+    {
+        var results = new string[texts.Count];
+        var pending = new List<(int Index, string Text)>();
+        await EnsureLoadedAsync();
+
+        for (var index = 0; index < texts.Count; index++)
+        {
+            var text = texts[index] ?? "";
+            results[index] = text;
+
+            if (string.IsNullOrWhiteSpace(text) || IsRussian(text))
+                continue;
+
+            if (_cache.TryGetValue(text.Trim(), out var cached))
+            {
+                results[index] = cached;
+                continue;
+            }
+
+            pending.Add((index, text));
+        }
+
+        if (pending.Count == 0)
+            return results;
+
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var remaining = new List<(int Index, string Text)>();
+            foreach (var entry in pending)
+            {
+                if (_cache.TryGetValue(entry.Text.Trim(), out var cached))
+                    results[entry.Index] = cached;
+                else
+                    remaining.Add(entry);
+            }
+
+            for (var offset = 0; offset < remaining.Count; offset += BatchSize)
+            {
+                ct.ThrowIfCancellationRequested();
+                var batch = remaining.Skip(offset).Take(BatchSize).ToList();
+                var combined = BuildBatch(batch.Select(entry => entry.Text).ToList());
+                var translated = await RequestTranslationAsync(combined, ct);
+                if (string.IsNullOrWhiteSpace(translated) || !BatchMarker.IsMatch(translated))
+                    continue;
+
+                var parts = ParseBatch(translated, batch.Count);
+                for (var slot = 0; slot < batch.Count; slot++)
+                {
+                    var value = parts[slot];
+                    if (string.IsNullOrWhiteSpace(value))
+                        continue;
+
+                    var original = batch[slot].Text.Trim();
+                    value = value.Trim();
+                    results[batch[slot].Index] = value;
+                    _cache[original] = value;
+                    progress?.Report((batch[slot].Index, value));
+                }
+
+                await SaveCacheAsync();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        return results;
+    }
+
     private async Task<string> TranslateChunkAsync(string chunk, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
@@ -53,9 +132,7 @@ public sealed class TranslationService
             if (_cache.TryGetValue(chunk, out var cached))
                 return cached;
 
-            var url = $"{Endpoint}?client=gtx&sl=auto&tl=ru&dt=t&q={Uri.EscapeDataString(chunk)}";
-            var json = await _http.GetStringAsync(url, ct);
-            var translated = Parse(json);
+            var translated = await RequestTranslationAsync(chunk, ct);
             if (string.IsNullOrWhiteSpace(translated))
                 return chunk;
 
@@ -63,14 +140,57 @@ public sealed class TranslationService
             await SaveCacheAsync();
             return translated;
         }
-        catch (Exception) when (!ct.IsCancellationRequested)
-        {
-            return chunk;
-        }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private async Task<string?> RequestTranslationAsync(string text, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"{Endpoint}?client=gtx&sl=auto&tl=ru&dt=t&q={Uri.EscapeDataString(text)}";
+            var json = await _http.GetStringAsync(url, ct);
+            var translated = Parse(json);
+            return string.IsNullOrWhiteSpace(translated) ? null : translated;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private static string BuildBatch(IReadOnlyList<string> texts)
+    {
+        var builder = new StringBuilder();
+        for (var index = 0; index < texts.Count; index++)
+        {
+            builder.Append("[[[FORQ").Append(index).Append("]]]\n");
+            builder.Append(texts[index]);
+            builder.Append('\n');
+        }
+
+        return builder.ToString();
+    }
+
+    private static string[] ParseBatch(string text, int count)
+    {
+        var result = new string[count];
+        var matches = BatchMarker.Matches(text);
+
+        for (var index = 0; index < matches.Count; index++)
+        {
+            var match = matches[index];
+            if (!int.TryParse(match.Groups["index"].Value, out var slot) || slot < 0 || slot >= count)
+                continue;
+
+            var start = match.Index + match.Length;
+            var end = index + 1 < matches.Count ? matches[index + 1].Index : text.Length;
+            result[slot] = text[start..end].Trim();
+        }
+
+        return result;
     }
 
     private static string Parse(string json)

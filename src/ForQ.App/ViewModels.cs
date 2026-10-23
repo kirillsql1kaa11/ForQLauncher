@@ -28,16 +28,18 @@ public sealed class SearchItem : ObservableBase
     private Bitmap? _icon;
     private bool _installed;
     private bool _selected;
+    private string _description;
 
     public SearchItem(ModrinthProject project, string typeLabel)
     {
         Project = project;
         TypeLabel = typeLabel;
+        _description = project.Description;
     }
 
     public ModrinthProject Project { get; }
     public string Title => Project.Title;
-    public string Description => Project.Description;
+    public string Description => _description;
     public string Author => string.IsNullOrWhiteSpace(Project.Author) ? "неизвестно" : Project.Author!;
     public string TypeLabel { get; }
     public string Downloads => Format.Count(Project.Downloads);
@@ -68,6 +70,13 @@ public sealed class SearchItem : ObservableBase
     {
         get => _selected;
         set => Set(ref _selected, value);
+    }
+
+    public void SetDescription(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return;
+        Set(ref _description, description, nameof(Description));
     }
 
     public bool NotInstalled => !_installed;

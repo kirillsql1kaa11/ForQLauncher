@@ -49,6 +49,8 @@ public partial class MainWindow : Window
     private string _resultsQuery = "";
     private ObservableCollection<SearchItem> _resultItems = new();
     private ObservableCollection<SearchItem> _modpackItems = new();
+    private CancellationTokenSource? _contentTranslationCts;
+    private CancellationTokenSource? _modpackTranslationCts;
     private int _searchOffset;
     private int _searchTotal;
     private int _modpackOffset;
@@ -519,6 +521,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        _contentTranslationCts?.Cancel();
+        var translationCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _contentTranslationCts = translationCts;
+
         var instance = _current;
         var kind = _kind;
         var query = SearchBox.Text ?? "";
@@ -567,6 +573,7 @@ public partial class MainWindow : Window
             _searchTotal = (int)response.TotalHits;
             UpdateSearchMore();
             UpdateBatchButton();
+            _ = TranslateDescriptionsAsync(_resultItems, () => generation == _searchGeneration, translationCts.Token);
 
             StatusText.Text = $"Найдено: {response.TotalHits}";
 
@@ -617,6 +624,7 @@ public partial class MainWindow : Window
         var instance = _current;
         var kind = _resultsKind;
         var generation = _searchGeneration;
+        var translationToken = _contentTranslationCts?.Token ?? _cts.Token;
         SearchMoreButton.IsEnabled = false;
         StatusText.Text = "Загружаю ещё...";
 
@@ -630,6 +638,7 @@ public partial class MainWindow : Window
                 return;
 
             var installedIds = _services.Content.InstalledProjectIds(instance, kind);
+            var added = new List<SearchItem>();
             foreach (var project in response.Hits)
             {
                 if (_resultItems.Count >= SearchMaxItems)
@@ -642,9 +651,11 @@ public partial class MainWindow : Window
                     Installed = installedIds.Contains(project.Key)
                 };
                 _resultItems.Add(item);
+                added.Add(item);
                 _ = item.LoadIconAsync(_cts.Token);
             }
 
+            _ = TranslateDescriptionsAsync(added, () => generation == _searchGeneration, translationToken);
             _searchOffset += response.Hits.Count;
             _searchTotal = (int)response.TotalHits;
             UpdateSearchMore();
@@ -662,6 +673,43 @@ public partial class MainWindow : Window
         finally
         {
             SearchMoreButton.IsEnabled = true;
+        }
+    }
+
+    private async Task TranslateDescriptionsAsync(
+        IReadOnlyList<SearchItem> items, Func<bool> isCurrent, CancellationToken ct)
+    {
+        if (items.Count == 0)
+            return;
+
+        try
+        {
+            var progress = new Progress<(int Index, string Text)>(entry =>
+            {
+                if (!isCurrent() || entry.Index < 0 || entry.Index >= items.Count)
+                    return;
+                items[entry.Index].SetDescription(entry.Text);
+            });
+
+            var descriptions = items.Select(item => item.Project.Description).ToList();
+            var translated = await _services.Translation.ToRussianBatchAsync(descriptions, ct, progress);
+            if (ct.IsCancellationRequested)
+                return;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!isCurrent())
+                    return;
+
+                for (var index = 0; index < items.Count && index < translated.Count; index++)
+                    items[index].SetDescription(translated[index]);
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
         }
     }
 
@@ -1190,6 +1238,10 @@ public partial class MainWindow : Window
 
     private async Task RunModpackSearchAsync()
     {
+        _modpackTranslationCts?.Cancel();
+        var translationCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _modpackTranslationCts = translationCts;
+
         var generation = ++_modpackGeneration;
         ModpackMoreButton.IsVisible = false;
         StatusText.Text = "Поиск сборок...";
@@ -1215,6 +1267,7 @@ public partial class MainWindow : Window
             _modpackTotal = (int)response.TotalHits;
             UpdateModpackMore();
             _modpacksLoaded = true;
+            _ = TranslateDescriptionsAsync(_modpackItems, () => generation == _modpackGeneration, translationCts.Token);
             StatusText.Text = "Готово";
         }
         catch (OperationCanceledException)
@@ -1254,6 +1307,7 @@ public partial class MainWindow : Window
         }
 
         var generation = _modpackGeneration;
+        var translationToken = _modpackTranslationCts?.Token ?? _cts.Token;
         ModpackMoreButton.IsEnabled = false;
         StatusText.Text = "Загружаю ещё...";
 
@@ -1265,6 +1319,7 @@ public partial class MainWindow : Window
             if (generation != _modpackGeneration)
                 return;
 
+            var added = new List<SearchItem>();
             foreach (var hit in response.Hits)
             {
                 if (_modpackItems.Count >= SearchMaxItems)
@@ -1274,9 +1329,11 @@ public partial class MainWindow : Window
 
                 var item = new SearchItem(hit, "Модпак");
                 _modpackItems.Add(item);
+                added.Add(item);
                 _ = item.LoadIconAsync(_cts.Token);
             }
 
+            _ = TranslateDescriptionsAsync(added, () => generation == _modpackGeneration, translationToken);
             _modpackOffset += response.Hits.Count;
             _modpackTotal = (int)response.TotalHits;
             UpdateModpackMore();
