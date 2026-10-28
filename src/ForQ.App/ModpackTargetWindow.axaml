@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.ModpackTargetWindow"
+        Title="Куда установить сборку"
+        Width="480" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <StackPanel Margin="24" Spacing="16">
+        <TextBlock x:Name="PackText" Classes="title" TextWrapping="Wrap" />
+        <TextBlock Classes="muted" TextWrapping="Wrap"
+                   Text="Сборку можно добавить в текущий профиль — моды, конфиги и файлы лягут поверх него. Совпадать должны версия Minecraft и загрузчик." />
+        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="9" Padding="12">
+            <StackPanel Spacing="3">
+                <TextBlock Text="ТЕКУЩИЙ ПРОФИЛЬ" Classes="section" />
+                <TextBlock x:Name="InstanceText" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Classes="hint" TextWrapping="Wrap"
+                           Text="Конфиги из сборки перезапишут текущие файлы профиля." />
+            </StackPanel>
+        </Border>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,4,0,0">
+            <Button Content="Отмена" Classes="ghost" Click="OnCancel" />
+            <Button Content="В текущий профиль" Click="OnExisting" />
+            <Button Content="Новый профиль" Classes="accent" Click="OnNew" />
+        </StackPanel>
+    </StackPanel>
+</Window>

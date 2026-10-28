@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ForQ.App.InstanceSettingsWindow"
+        Title="Настройки профиля"
+        Width="540" Height="660" MinWidth="460" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}">
+
+    <Grid RowDefinitions="*,Auto">
+        <ScrollViewer Grid.Row="0" Margin="24,20,24,0" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="20">
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="10" Padding="14">
+                    <StackPanel Spacing="3">
+                        <TextBlock x:Name="InstanceInfoText" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="InstancePathText" Classes="hint" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="НАЗВАНИЕ ПРОФИЛЯ" Classes="section" />
+                    <TextBox x:Name="NameBox" PlaceholderText="Мой профиль" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="НИКИ" Classes="section" />
+                    <ComboBox x:Name="NickBox" SelectionChanged="OnNickSelected" />
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <TextBox x:Name="NewNickBox" PlaceholderText="Новый ник" KeyDown="OnNewNickKey" />
+                        <Button Grid.Column="1" Content="Добавить" Click="OnAddNick" />
+                        <Button Grid.Column="2" Content="Удалить" Classes="ghost" Click="OnRemoveNick" />
+                    </Grid>
+                    <TextBlock Classes="hint" TextWrapping="Wrap"
+                               Text="3–16 символов: латиница, цифры и подчёркивание. Ник можно быстро переключать в шапке лаунчера." />
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="ПАМЯТЬ" Classes="section" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock x:Name="MemoryText" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button Content="Подобрать" Classes="ghost" FontSize="11" Padding="8,2" Click="OnRecommendMemory" />
+                    </StackPanel>
+                    <Slider x:Name="MemorySlider" Minimum="1024" Maximum="16384" TickFrequency="512"
+                            IsSnapToTickEnabled="True" ValueChanged="OnMemoryChanged" />
+                    <TextBlock x:Name="MemoryHint" Classes="hint" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="РАЗРЕШЕНИЕ" Classes="section" />
+                    <ComboBox x:Name="ResolutionBox" SelectionChanged="OnResolutionChanged" />
+                    <StackPanel x:Name="CustomResolutionPanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
+                        <TextBox x:Name="WidthBox" Width="90" PlaceholderText="ширина" KeyDown="OnCustomResolutionKey" />
+                        <TextBox x:Name="HeightBox" Width="90" PlaceholderText="высота" KeyDown="OnCustomResolutionKey" />
+                    </StackPanel>
+                    <TextBlock x:Name="ResolutionText" Classes="hint" />
+                </StackPanel>
+
+                <TextBlock x:Name="HintText" Classes="danger" TextWrapping="Wrap" MinHeight="18" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Spacing="8" Margin="24,16,24,20">
+            <Button Content="Отмена" Classes="ghost" Click="OnCancel" />
+            <Button Content="Сохранить" Classes="accent" Click="OnSave" />
+        </StackPanel>
+    </Grid>
+</Window>

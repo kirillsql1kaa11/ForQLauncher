@@ -35,4 +35,13 @@
   <ItemGroup>
     <AvaloniaResource Include="icon.ico" />
   </ItemGroup>
+
+  <Target Name="CopyReleaseAsset" AfterTargets="Publish" Condition="'$(ReleaseAsset)' == 'true'">
+    <PropertyGroup>
+      <ReleaseAssetPath>$(MSBuildThisFileDirectory)..\..\dist\ForQLauncher-$(Version)-win-x64.exe</ReleaseAssetPath>
+    </PropertyGroup>
+    <MakeDir Directories="$(MSBuildThisFileDirectory)..\..\dist" />
+    <Copy SourceFiles="$(PublishDir)ForQ.App.exe" DestinationFiles="$(ReleaseAssetPath)" />
+    <Message Importance="high" Text="Release asset: $(ReleaseAssetPath)" />
+  </Target>
 </Project>

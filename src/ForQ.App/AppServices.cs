@@ -26,7 +26,7 @@ public sealed class AppServices : IDisposable
         Instances = new InstanceService(Root);
         Installer = new GameInstaller(Mojang, Assets, Runtime, Loaders, Downloads, Http);
         Launcher = new LaunchService(Mojang, Runtime, Downloads);
-        Modpacks = new ModpackService(Instances, Installer, Downloads);
+        Modpacks = new ModpackService(Instances, Installer, Downloads, Modrinth, Content);
         Updates = new UpdateService(Http, Downloads);
         Translation = new TranslationService(Http, Path.Combine(CacheDirectory, "translations.json"));
         Settings = Instances.LoadSettings();

@@ -4,6 +4,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -15,31 +16,24 @@ namespace ForQ.App;
 
 public partial class MainWindow : Window
 {
-    private static readonly (int Width, int Height)[] ResolutionPresets =
-    {
-        (1920, 1080),
-        (1600, 900),
-        (1366, 768),
-        (1280, 720),
-        (1024, 768),
-        (854, 480)
-    };
-
-    private const string CustomResolution = "Своя…";
     private const int SearchPageSize = 100;
     private const int SearchMaxItems = 500;
 
     private readonly AppServices _services = AppServices.Current;
     private readonly List<Instance> _instances = new();
-    private readonly StringBuilder _log = new();
+    private readonly List<LogEntry> _logEntries = new();
+    private readonly ObservableCollection<LogEntry> _visibleLog = new();
+    private readonly string _logDirectory;
+    private StreamWriter? _logWriter;
     private readonly CancellationTokenSource _cts = new();
     private readonly Progress<DownloadState> contentProgress;
     private readonly Dictionary<string, ContentUpdate> _updates = new(StringComparer.OrdinalIgnoreCase);
     private Instance? _current;
     private Process? _game;
     private ContentKind _kind = ContentKind.Mod;
-    private bool _suppressMemoryEvent;
-    private bool _suppressResolutionEvent;
+    private int _logLevelFilter;
+    private bool _suppressUsernameEvent;
+    private bool _whatsNewLoaded;
     private int _searchGeneration;
     private int _modpackGeneration;
     private bool _resultsLoaded;
@@ -65,6 +59,27 @@ public partial class MainWindow : Window
         InitializeComponent();
         ResultsList.AddHandler(KeyDownEvent, OnResultKey, RoutingStrategies.Tunnel);
         ModpackList.AddHandler(KeyDownEvent, OnResultKey, RoutingStrategies.Tunnel);
+        LogList.ItemsSource = _visibleLog;
+        LogLevelBox.ItemsSource = new[] { "Все строки", "Ошибки", "Ошибки и предупреждения", "Моды" };
+        LogLevelBox.SelectedIndex = 0;
+        UpdateLogCount();
+
+        _logDirectory = Path.Combine(_services.Root, "logs");
+        Directory.CreateDirectory(_logDirectory);
+        RotateLogs();
+        try
+        {
+            _logWriter = new StreamWriter(
+                Path.Combine(_logDirectory, $"launcher-{DateTime.Now:yyyyMMdd-HHmmss}.log"),
+                append: false)
+            {
+                AutoFlush = true
+            };
+        }
+        catch (IOException)
+        {
+        }
+
         contentProgress = new Progress<DownloadState>(state =>
         {
             _lastDownload = state;
@@ -90,7 +105,6 @@ public partial class MainWindow : Window
             : _services.Settings.Username;
 
         VersionText.Text = "Версия " + AppServices.Version;
-        UsernameBox.Text = _services.Settings.Username;
         SettingsUsernameBox.Text = _services.Settings.Username;
         TelemetryCheck.IsChecked = _services.Settings.BlockTelemetry;
         JavaPathBox.Text = _services.Settings.JavaPath ?? "";
@@ -99,14 +113,6 @@ public partial class MainWindow : Window
         SpeedLimitBox.Text = _services.Settings.DownloadSpeedLimitKbps.ToString();
         _services.Downloads.SpeedLimitBytesPerSecond = _services.Settings.DownloadSpeedLimitKbps * 1024L;
         AutoUpdateCheck.IsChecked = _services.Settings.AutoCheckUpdates;
-
-        _suppressMemoryEvent = true;
-        MemorySlider.Value = _services.Settings.MemoryMb;
-        _suppressMemoryEvent = false;
-        MemoryText.Text = _services.Settings.MemoryMb + " МБ";
-        MemoryHint.Text = $"Всего ОЗУ: {SystemInfo.TotalMemoryMb / 1024.0:F0} ГБ · рекомендуется {SystemInfo.RecommendedMemoryMb} МБ";
-
-        UpdateResolutionBox();
 
         _ready = true;
         _ = InitializeAsync();
@@ -135,6 +141,13 @@ public partial class MainWindow : Window
         }
 
         _services.SaveSettings();
+        try
+        {
+            _logWriter?.Dispose();
+        }
+        catch (IOException)
+        {
+        }
         _services.Dispose();
     }
 
@@ -151,10 +164,14 @@ public partial class MainWindow : Window
             _current = null;
             TitleText.Text = "Нет профиля";
             SubtitleText.Text = "Создайте профиль, чтобы начать";
-            ProfileInfoText.Text = "—";
             PlayButton.IsEnabled = false;
+            NoProfilesText.IsVisible = true;
+            UsernameBox.ItemsSource = null;
+            UpdateProfileSummary();
             return;
         }
+
+        NoProfilesText.IsVisible = false;
 
         var target = _instances.FirstOrDefault(i => i.Id == _services.Settings.LastInstanceId) ?? _instances[0];
         if (target.Id != _services.Settings.LastInstanceId)
@@ -182,15 +199,10 @@ public partial class MainWindow : Window
         TitleText.Text = instance.Name;
         SubtitleText.Text = $"{instance.MinecraftVersion} · {instance.LoaderName}"
                             + (string.IsNullOrEmpty(instance.LoaderVersion) ? "" : $" {instance.LoaderVersion}");
-        ProfileInfoText.Text = instance.ProfileId;
         PlayButton.IsEnabled = true;
 
-        UsernameBox.Text = instance.Username;
-        _suppressMemoryEvent = true;
-        MemorySlider.Value = instance.MemoryMb;
-        _suppressMemoryEvent = false;
-        MemoryText.Text = instance.MemoryMb + " МБ";
-        UpdateResolutionBox();
+        UpdateProfileSummary();
+        RefreshUsernameCombo();
 
         RefreshInstalled();
 
@@ -246,8 +258,8 @@ public partial class MainWindow : Window
         if (_game is { HasExited: false })
             return;
 
-        _current.Username = string.IsNullOrWhiteSpace(UsernameBox.Text) ? "Player" : UsernameBox.Text.Trim();
-        _current.MemoryMb = (int)MemorySlider.Value;
+        if (UsernameBox.SelectedItem is string nick && !string.IsNullOrWhiteSpace(nick))
+            _current.Username = nick;
         await _services.Instances.SaveAsync(_current);
 
         try
@@ -341,104 +353,196 @@ public partial class MainWindow : Window
 
     private void OnClearLog(object? sender, RoutedEventArgs e)
     {
-        _log.Clear();
-        LogBox.Text = "";
+        _logEntries.Clear();
+        _visibleLog.Clear();
+        UpdateLogCount();
+        StatusText.Text = "Журнал очищен";
     }
 
-    private void UpdateResolutionBox()
+    private void OnLogFilterChanged(object? sender, TextChangedEventArgs e)
     {
-        var items = ResolutionPresets.Select(p => $"{p.Width} × {p.Height}").ToList();
-        items.Add(CustomResolution);
-
-        _suppressResolutionEvent = true;
-        ResolutionBox.ItemsSource = items;
-
-        var current = _current is null ? "1280 × 720" : $"{_current.Width} × {_current.Height}";
-        if (items.Contains(current))
-        {
-            ResolutionBox.SelectedItem = current;
-            CustomResolutionPanel.IsVisible = false;
-        }
-        else
-        {
-            ResolutionBox.SelectedItem = CustomResolution;
-            CustomResolutionPanel.IsVisible = true;
-            WidthBox.Text = _current?.Width.ToString() ?? "1280";
-            HeightBox.Text = _current?.Height.ToString() ?? "720";
-        }
-
-        _suppressResolutionEvent = false;
-        ResolutionText.Text = current;
+        if (_ready)
+            RebuildLogView();
     }
 
-    private void OnResolutionChanged(object? sender, SelectionChangedEventArgs e)
+    private void OnLogLevelChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_suppressResolutionEvent || ResolutionBox.SelectedItem is not string text)
-            return;
+        _logLevelFilter = Math.Max(0, LogLevelBox.SelectedIndex);
+        if (_ready)
+            RebuildLogView();
+    }
 
-        if (text == CustomResolution)
+    private void RebuildLogView()
+    {
+        _visibleLog.Clear();
+        foreach (var entry in _logEntries)
         {
-            CustomResolutionPanel.IsVisible = true;
-            WidthBox.Text = _current?.Width.ToString() ?? "1280";
-            HeightBox.Text = _current?.Height.ToString() ?? "720";
-            return;
+            if (MatchesLogFilter(entry))
+                _visibleLog.Add(entry);
         }
 
-        CustomResolutionPanel.IsVisible = false;
-        var parts = text.Split('×', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length != 2 || !int.TryParse(parts[0], out var width) || !int.TryParse(parts[1], out var height))
-            return;
-
-        ApplyResolution(width, height);
+        UpdateLogCount();
+        if (_visibleLog.Count > 0)
+            LogList.ScrollIntoView(_visibleLog[^1]);
     }
 
-    private void OnCustomResolutionKey(object? sender, KeyEventArgs e)
+    private bool MatchesLogFilter(LogEntry entry)
     {
-        if (e.Key != Key.Enter)
-            return;
+        var query = LogFilterBox.Text ?? "";
+        var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length > 0 && !tokens.All(token => entry.Text.Contains(token, StringComparison.OrdinalIgnoreCase)))
+            return false;
 
-        if (int.TryParse(WidthBox.Text, out var width) && int.TryParse(HeightBox.Text, out var height))
-            ApplyResolution(width, height);
-    }
-
-    private void ApplyResolution(int width, int height)
-    {
-        width = Math.Clamp(width, 640, 7680);
-        height = Math.Clamp(height, 480, 4320);
-
-        if (_current is not null)
+        return _logLevelFilter switch
         {
-            _current.Width = width;
-            _current.Height = height;
+            1 => entry.Level == LogLevel.Error,
+            2 => entry.Level is LogLevel.Error or LogLevel.Warning,
+            3 => entry.Level == LogLevel.Mod,
+            _ => true
+        };
+    }
+
+    private void UpdateLogCount()
+    {
+        LogCountText.Text = $"{_visibleLog.Count} из {_logEntries.Count}";
+        LogEmptyText.IsVisible = _visibleLog.Count == 0;
+        LogEmptyText.Text = _logEntries.Count == 0
+            ? "Журнал пуст. Запустите игру или установите контент — здесь появятся строки."
+            : "По фильтру ничего не найдено. Измените запрос или уровень.";
+    }
+
+    private async void OnCopyLog(object? sender, RoutedEventArgs e)
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null)
+            return;
+
+        await clipboard.SetTextAsync(string.Join(Environment.NewLine, _logEntries.Select(entry => entry.Text)));
+        StatusText.Text = "Журнал скопирован";
+    }
+
+    private async void OnSaveLog(object? sender, RoutedEventArgs e)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Сохранить журнал",
+            SuggestedFileName = $"forq-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType("Текстовый файл") { Patterns = new[] { "*.txt", "*.log" } }
+            }
+        });
+
+        if (file is null)
+            return;
+
+        await using var stream = await file.OpenWriteAsync();
+        await using var writer = new StreamWriter(stream);
+        foreach (var entry in _logEntries)
+            await writer.WriteLineAsync(entry.Text);
+
+        StatusText.Text = "Журнал сохранён";
+    }
+
+    private void OnOpenLogs(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(_logDirectory);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_logDirectory}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Не удалось открыть папку логов: " + ex.Message;
+        }
+    }
+
+    private void UpdateProfileSummary()
+    {
+        if (_current is null)
+        {
+            ProfileSummaryText.Text = "Профиль не выбран";
+            ProfileDetailsText.Text = "Создайте профиль, чтобы настроить память, разрешение и ники.";
+            ProfilePathText.Text = "";
+            return;
         }
 
-        ResolutionText.Text = $"{width} × {height}";
+        ProfileSummaryText.Text = $"{_current.Name} · ник {_current.Username}";
+        ProfileDetailsText.Text = $"{_current.MinecraftVersion} · {_current.LoaderName}"
+                                  + (string.IsNullOrEmpty(_current.LoaderVersion) ? "" : $" {_current.LoaderVersion}")
+                                  + $" · {_current.MemoryMb} МБ · {_current.Width} × {_current.Height}";
+        ProfilePathText.Text = _current.Folder;
     }
 
-    private void OnMemoryChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    private void RefreshUsernameCombo()
     {
-        if (_suppressMemoryEvent)
+        if (_current is null)
+        {
+            UsernameBox.ItemsSource = null;
+            return;
+        }
+
+        if (_current.Usernames.Count == 0)
+            _current.Usernames.Add(_current.Username);
+        if (!_current.Usernames.Contains(_current.Username, StringComparer.OrdinalIgnoreCase))
+            _current.Usernames.Add(_current.Username);
+
+        _suppressUsernameEvent = true;
+        UsernameBox.ItemsSource = _current.Usernames.ToList();
+        UsernameBox.SelectedItem = _current.Username;
+        _suppressUsernameEvent = false;
+    }
+
+    private async void OnUsernameChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressUsernameEvent || _current is null || UsernameBox.SelectedItem is not string nick)
+            return;
+        if (string.Equals(_current.Username, nick, StringComparison.Ordinal))
             return;
 
-        var value = (int)e.NewValue;
-        MemoryText.Text = value + " МБ";
-        if (_current is not null)
-            _current.MemoryMb = value;
+        _current.Username = nick;
+        await _services.Instances.SaveAsync(_current);
+        UpdateProfileSummary();
+        AppendLog($"Ник профиля: {nick}");
     }
 
-    private void OnRecommendMemory(object? sender, RoutedEventArgs e)
+    private async void OnInstanceSettings(object? sender, RoutedEventArgs e)
     {
-        var value = SystemInfo.RecommendedMemoryMb;
+        if (_current is null)
+        {
+            StatusText.Text = "Сначала выберите профиль";
+            return;
+        }
 
-        _suppressMemoryEvent = true;
-        MemorySlider.Value = value;
-        _suppressMemoryEvent = false;
+        var instance = _current;
+        var dialog = new InstanceSettingsWindow(instance);
+        if (!await dialog.ShowDialog<bool>(this))
+            return;
 
-        MemoryText.Text = value + " МБ";
-        if (_current is not null)
-            _current.MemoryMb = value;
+        await LoadInstancesAsync();
+        InstanceList.SelectedItem = _instances.FirstOrDefault(item => item.Id == instance.Id);
+        AppendLog($"Настройки профиля «{instance.Name}» сохранены.");
+        StatusText.Text = "Настройки профиля сохранены";
+    }
 
-        StatusText.Text = $"Подобрано {value} МБ из {SystemInfo.TotalMemoryMb / 1024.0:F0} ГБ";
+    private void RotateLogs()
+    {
+        try
+        {
+            var stale = Directory.GetFiles(_logDirectory, "launcher-*.log")
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .Skip(10)
+                .ToList();
+
+            foreach (var path in stale)
+                File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private void OnTabChanged(object? sender, SelectionChangedEventArgs e)
@@ -454,6 +558,10 @@ public partial class MainWindow : Window
         else if (Tabs.SelectedIndex == 2)
         {
             _ = EnsureModpackSearchAsync();
+        }
+        else if (Tabs.SelectedIndex == 3)
+        {
+            _ = LoadWhatsNewAsync();
         }
     }
 
@@ -489,6 +597,8 @@ public partial class MainWindow : Window
         if (_current is null)
         {
             SetFilter("Сначала выберите профиль", false);
+            ResultsEmptyText.Text = "Выберите профиль слева, чтобы искать моды, ресурспаки и шейдеры.";
+            ResultsEmptyText.IsVisible = true;
             return;
         }
 
@@ -518,6 +628,8 @@ public partial class MainWindow : Window
         {
             SetFilter("Сначала выберите профиль", false);
             StatusText.Text = "Сначала выберите профиль";
+            ResultsEmptyText.Text = "Выберите профиль слева, чтобы искать контент.";
+            ResultsEmptyText.IsVisible = true;
             return;
         }
 
@@ -531,6 +643,7 @@ public partial class MainWindow : Window
         var generation = ++_searchGeneration;
 
         SearchMoreButton.IsVisible = false;
+        ResultsEmptyText.IsVisible = false;
 
         if (kind == ContentKind.Mod && instance.Loader == LoaderKind.Vanilla)
         {
@@ -541,6 +654,8 @@ public partial class MainWindow : Window
             SearchCountText.Text = "";
             UpdateBatchButton();
             SetFilter("Для модов нужен профиль с загрузчиком: Fabric, Quilt или NeoForge", true);
+            ResultsEmptyText.Text = "Для модов нужен загрузчик. Создайте профиль с Fabric, Quilt или NeoForge либо переключитесь на ресурспаки и шейдеры.";
+            ResultsEmptyText.IsVisible = true;
             StatusText.Text = "Ванильный профиль: моды не загрузятся";
             return;
         }
@@ -573,6 +688,7 @@ public partial class MainWindow : Window
             _searchTotal = (int)response.TotalHits;
             UpdateSearchMore();
             UpdateBatchButton();
+            UpdateResultsEmptyState(kind, query);
             _ = TranslateDescriptionsAsync(_resultItems, () => generation == _searchGeneration, translationCts.Token);
 
             StatusText.Text = $"Найдено: {response.TotalHits}";
@@ -588,8 +704,35 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (generation == _searchGeneration)
+            {
                 StatusText.Text = "Ошибка поиска: " + ex.Message;
+                ResultsEmptyText.Text = "Не удалось загрузить результаты. Проверьте подключение к интернету и повторите поиск.";
+                ResultsEmptyText.IsVisible = true;
+            }
         }
+    }
+
+    private void UpdateResultsEmptyState(ContentKind kind, string query)
+    {
+        if (_resultItems.Count > 0)
+        {
+            ResultsEmptyText.IsVisible = false;
+            return;
+        }
+
+        var typeName = kind switch
+        {
+            ContentKind.Mod => "Модов",
+            ContentKind.ResourcePack => "Ресурспаков",
+            _ => "Шейдеров"
+        };
+
+        var message = $"{typeName} не найдено.";
+        if (!string.IsNullOrWhiteSpace(query))
+            message += $" По запросу «{query.Trim()}» ничего нет — проверьте написание или смените тип контента.";
+
+        ResultsEmptyText.Text = message;
+        ResultsEmptyText.IsVisible = true;
     }
 
     private void UpdateSearchMore()
@@ -952,6 +1095,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnTogglePin(object? sender, RoutedEventArgs e)
+    {
+        if (_current is null || sender is not Button { DataContext: InstalledItem item })
+            return;
+
+        var pinned = !item.Pinned;
+        try
+        {
+            _services.Content.SetPinned(_current, item.Content, pinned);
+            if (pinned)
+                _updates.Remove(item.FileName);
+
+            RefreshInstalled();
+            StatusText.Text = pinned
+                ? $"Закреплено: {item.Title}. Обновления не тронут этот файл."
+                : $"Откреплено: {item.Title}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Не удалось изменить закрепление: " + ex.Message;
+        }
+    }
+
     private async void OnCheckUpdates(object? sender, RoutedEventArgs e) => await CheckContentUpdatesAsync();
 
     private async void OnCheckConflicts(object? sender, RoutedEventArgs e) => await CheckModConflictsAsync();
@@ -1177,7 +1343,7 @@ public partial class MainWindow : Window
         {
             InstalledList.ItemsSource = null;
             UpdateAllButton.IsVisible = false;
-            InstalledEmptyText.Text = "Выберите профиль";
+            InstalledEmptyText.Text = "Выберите профиль слева, чтобы увидеть установленный контент.";
             InstalledEmptyText.IsVisible = true;
             return;
         }
@@ -1198,7 +1364,7 @@ public partial class MainWindow : Window
                 continue;
 
             var item = new InstalledItem(content);
-            if (_updates.TryGetValue(content.FileName, out var update))
+            if (!content.Pinned && _updates.TryGetValue(content.FileName, out var update))
             {
                 item.UpdateAvailable = true;
                 var from = string.IsNullOrEmpty(content.VersionNumber) ? content.KindName : content.VersionNumber;
@@ -1209,9 +1375,24 @@ public partial class MainWindow : Window
         }
 
         InstalledList.ItemsSource = view;
-        InstalledEmptyText.Text = contents.Count == 0 ? "Пока ничего не установлено" : "Ничего не найдено";
-        InstalledEmptyText.IsVisible = view.Count == 0;
-        UpdateAllButton.IsVisible = _updates.Values.Any(update => update.Content.Kind == _kind);
+        if (view.Count == 0)
+        {
+            InstalledEmptyText.Text = contents.Count == 0
+                ? _kind switch
+                {
+                    ContentKind.Mod => "Модов пока нет. Найдите мод в поиске слева и нажмите «Установить».",
+                    ContentKind.ResourcePack => "Ресурспаков пока нет. Найдите их в поиске слева и нажмите «Установить».",
+                    _ => "Шейдеров пока нет. Для работы шейдеров понадобится Iris или OptiFine."
+                }
+                : "Ничего не найдено. Очистите строку поиска над списком.";
+            InstalledEmptyText.IsVisible = true;
+        }
+        else
+        {
+            InstalledEmptyText.IsVisible = false;
+        }
+
+        UpdateAllButton.IsVisible = _updates.Values.Any(update => update.Content.Kind == _kind && !update.Content.Pinned);
 
         foreach (var item in view)
             _ = item.LoadIconAsync(_cts.Token);
@@ -1244,6 +1425,7 @@ public partial class MainWindow : Window
 
         var generation = ++_modpackGeneration;
         ModpackMoreButton.IsVisible = false;
+        ModpackEmptyText.IsVisible = false;
         StatusText.Text = "Поиск сборок...";
 
         try
@@ -1266,6 +1448,7 @@ public partial class MainWindow : Window
             _modpackOffset = response.Hits.Count;
             _modpackTotal = (int)response.TotalHits;
             UpdateModpackMore();
+            UpdateModpackEmptyState();
             _modpacksLoaded = true;
             _ = TranslateDescriptionsAsync(_modpackItems, () => generation == _modpackGeneration, translationCts.Token);
             StatusText.Text = "Готово";
@@ -1276,8 +1459,27 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (generation == _modpackGeneration)
+            {
                 StatusText.Text = "Ошибка поиска: " + ex.Message;
+                ModpackEmptyText.Text = "Не удалось загрузить сборки. Проверьте подключение к интернету.";
+                ModpackEmptyText.IsVisible = true;
+            }
         }
+    }
+
+    private void UpdateModpackEmptyState()
+    {
+        if (_modpackItems.Count > 0)
+        {
+            ModpackEmptyText.IsVisible = false;
+            return;
+        }
+
+        var query = ModpackSearchBox.Text ?? "";
+        ModpackEmptyText.Text = string.IsNullOrWhiteSpace(query)
+            ? "Сборок не найдено. Попробуйте «optimized», «adventure» или другой запрос."
+            : $"По запросу «{query.Trim()}» сборок нет. Проверьте написание или попробуйте другое слово.";
+        ModpackEmptyText.IsVisible = true;
     }
 
     private void UpdateModpackMore()
@@ -1399,6 +1601,94 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnInstallModpackIntoProfile(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: SearchItem item })
+            return;
+
+        if (_current is null)
+        {
+            StatusText.Text = "Сначала выберите профиль";
+            return;
+        }
+
+        var instance = _current;
+        try
+        {
+            var versions = await _services.Modrinth.GetVersionsAsync(item.Project.Key, _cts.Token);
+            var version = versions
+                .Where(candidate => candidate.Files.Count > 0)
+                .OrderByDescending(candidate => candidate.DatePublished)
+                .FirstOrDefault();
+
+            if (version is null)
+            {
+                StatusText.Text = "У этой сборки нет файлов";
+                return;
+            }
+
+            var target = await new ModpackTargetWindow(
+                    item.Title, $"{instance.Name} · {instance.MinecraftVersion} · {instance.LoaderName}")
+                .ShowDialog<bool?>(this);
+            if (target != true)
+                return;
+
+            ShowDownloadOverlay("Импорт сборки", $"Скачивание «{item.Title}»...");
+            var archive = await _services.Modpacks.DownloadArchiveAsync(version, contentProgress, _cts.Token);
+
+            try
+            {
+                UpdateOverlay("Установка файлов сборки...");
+                var count = await _services.Modpacks.InstallIntoAsync(
+                    archive, instance, UpdateOverlay, contentProgress, _cts.Token);
+
+                AppendLog($"Сборка «{item.Title}» добавлена в профиль {instance.Name}: файлов {count}.");
+                RefreshInstalled();
+                UpdateSearchMarks();
+                UpdateProfileSummary();
+                StatusText.Text = $"Сборка добавлена в профиль: {instance.Name}";
+            }
+            finally
+            {
+                TryDeleteFile(archive);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Ошибка импорта сборки: " + ex.Message;
+            AppendLog("Импорт сборки: " + ex.Message);
+        }
+        finally
+        {
+            HideOverlay();
+        }
+    }
+
+    private async Task<bool?> ChooseModpackTargetAsync(string packName)
+    {
+        if (_current is null)
+            return false;
+
+        var dialog = new ModpackTargetWindow(
+            packName, $"{_current.Name} · {_current.MinecraftVersion} · {_current.LoaderName}");
+        return await dialog.ShowDialog<bool?>(this);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
     private void OnDragOver(object? sender, DragEventArgs e)
     {
         e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None;
@@ -1440,8 +1730,32 @@ public partial class MainWindow : Window
                 {
                     if (IsExtension(path, ".mrpack"))
                     {
+                        var packName = Path.GetFileNameWithoutExtension(path);
+                        var target = await ChooseModpackTargetAsync(packName);
+                        if (target is null)
+                            continue;
+
+                        if (target == true)
+                        {
+                            if (_current is null)
+                            {
+                                errors.Add($"{packName}: сначала выберите профиль");
+                                continue;
+                            }
+
+                            UpdateOverlay($"Импорт «{packName}»...");
+                            var count = await _services.Modpacks.InstallIntoAsync(
+                                path, _current, UpdateOverlay, contentProgress, _cts.Token);
+                            RefreshInstalled();
+                            UpdateSearchMarks();
+                            UpdateProfileSummary();
+                            AppendLog($"Сборка «{packName}» добавлена в профиль {_current.Name}: файлов {count}.");
+                            imported++;
+                            continue;
+                        }
+
                         var instance = await _services.Modpacks.InstallArchiveAsync(
-                            path, Path.GetFileNameWithoutExtension(path), null, null,
+                            path, packName, null, null,
                             UpdateOverlay, contentProgress, _cts.Token);
                         await LoadInstancesAsync();
                         InstanceList.SelectedItem = _instances.FirstOrDefault(item => item.Id == instance.Id);
@@ -1552,19 +1866,45 @@ public partial class MainWindow : Window
                 return;
             }
 
+            var target = await ChooseModpackTargetAsync(details.Title);
+            if (target is null)
+                return;
+
             ShowDownloadOverlay("Установка сборки", $"Скачивание «{details.Title}»...");
             UpdateOverlayBar(false, 0);
 
             try
             {
-                var instance = await _services.Modpacks.InstallAsync(
-                    version, details.Title, details.IconUrl, details.Id,
-                    UpdateOverlay, contentProgress, _cts.Token);
+                if (target == true && _current is not null)
+                {
+                    var archive = await _services.Modpacks.DownloadArchiveAsync(version, contentProgress, _cts.Token);
+                    try
+                    {
+                        UpdateOverlay($"Импорт «{details.Title}»...");
+                        var count = await _services.Modpacks.InstallIntoAsync(
+                            archive, _current, UpdateOverlay, contentProgress, _cts.Token);
+                        RefreshInstalled();
+                        UpdateSearchMarks();
+                        UpdateProfileSummary();
+                        AppendLog($"Сборка «{details.Title}» добавлена в профиль {_current.Name}: файлов {count}.");
+                        StatusText.Text = $"Сборка добавлена в профиль: {_current.Name}";
+                    }
+                    finally
+                    {
+                        TryDeleteFile(archive);
+                    }
+                }
+                else
+                {
+                    var instance = await _services.Modpacks.InstallAsync(
+                        version, details.Title, details.IconUrl, details.Id,
+                        UpdateOverlay, contentProgress, _cts.Token);
 
-                await LoadInstancesAsync();
-                InstanceList.SelectedItem = _instances.FirstOrDefault(item => item.Id == instance.Id);
-                AppendLog($"Сборка «{details.Title}» установлена в профиль {instance.Name}.");
-                StatusText.Text = $"Сборка установлена: {instance.Name}";
+                    await LoadInstancesAsync();
+                    InstanceList.SelectedItem = _instances.FirstOrDefault(item => item.Id == instance.Id);
+                    AppendLog($"Сборка «{details.Title}» установлена в профиль {instance.Name}.");
+                    StatusText.Text = $"Сборка установлена: {instance.Name}";
+                }
             }
             finally
             {
@@ -1644,12 +1984,31 @@ public partial class MainWindow : Window
 
             if (extension == ".mrpack")
             {
-                var instance = await _services.Modpacks.InstallArchiveAsync(
-                    tempPath, Path.GetFileNameWithoutExtension(fileName), null, null,
-                    UpdateOverlay, contentProgress, _cts.Token);
-                await LoadInstancesAsync();
-                InstanceList.SelectedItem = _instances.FirstOrDefault(item => item.Id == instance.Id);
-                StatusText.Text = $"Сборка установлена: {instance.Name}";
+                var packName = Path.GetFileNameWithoutExtension(fileName);
+                var target = await ChooseModpackTargetAsync(packName);
+                if (target is null)
+                    return;
+
+                if (target == true && _current is not null)
+                {
+                    UpdateOverlay($"Импорт «{packName}»...");
+                    var count = await _services.Modpacks.InstallIntoAsync(
+                        tempPath, _current, UpdateOverlay, contentProgress, _cts.Token);
+                    RefreshInstalled();
+                    UpdateSearchMarks();
+                    UpdateProfileSummary();
+                    AppendLog($"Сборка «{packName}» добавлена в профиль {_current.Name}: файлов {count}.");
+                    StatusText.Text = $"Сборка добавлена в профиль: {_current.Name}";
+                }
+                else
+                {
+                    var instance = await _services.Modpacks.InstallArchiveAsync(
+                        tempPath, packName, null, null,
+                        UpdateOverlay, contentProgress, _cts.Token);
+                    await LoadInstancesAsync();
+                    InstanceList.SelectedItem = _instances.FirstOrDefault(item => item.Id == instance.Id);
+                    StatusText.Text = $"Сборка установлена: {instance.Name}";
+                }
             }
             else
             {
@@ -1703,6 +2062,75 @@ public partial class MainWindow : Window
 
     private static bool IsExtension(string path, string extension)
         => string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase);
+
+    private async Task LoadWhatsNewAsync()
+    {
+        if (_whatsNewLoaded)
+            return;
+        _whatsNewLoaded = true;
+
+        WhatsNewTitle.Text = $"Версия {AppServices.Version}";
+        WhatsNewMeta.Text = $"{ReleaseNotes.Date} · журнал изменений";
+        WhatsNewBody.Text = MarkdownText.ToPlain(ReleaseNotes.Current);
+        WhatsNewStatus.Text = "Загружаю историю релизов...";
+
+        try
+        {
+            var releases = await _services.Updates.GetReleasesAsync(12, _cts.Token);
+            if (releases.Count == 0)
+            {
+                WhatsNewStatus.Text = "GitHub недоступен — показаны заметки этой версии.";
+                return;
+            }
+
+            var current = releases.FirstOrDefault(release =>
+                string.Equals(release.TagName.TrimStart('v', 'V'), AppServices.Version,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (current is not null && !string.IsNullOrWhiteSpace(current.Body))
+            {
+                WhatsNewBody.Text = MarkdownText.ToPlain(current.Body);
+                WhatsNewMeta.Text = $"{current.PublishedAt.LocalDateTime:dd.MM.yyyy} · GitHub";
+            }
+
+            var previous = releases
+                .Where(release => current is null
+                                  || !string.Equals(release.TagName, current.TagName, StringComparison.OrdinalIgnoreCase))
+                .Take(6)
+                .Select(release => new ReleaseNoteItem
+                {
+                    Title = string.IsNullOrWhiteSpace(release.Name)
+                        ? release.TagName
+                        : $"{release.Name} · {release.TagName}",
+                    Meta = release.PublishedAt.LocalDateTime.ToString("dd.MM.yyyy"),
+                    Body = Truncate(MarkdownText.ToPlain(release.Body), 700)
+                })
+                .ToList();
+
+            PreviousReleasesList.ItemsSource = previous;
+            PreviousReleasesBlock.IsVisible = previous.Count > 0;
+
+            var latest = releases[0];
+            WhatsNewStatus.Text = UpdateService.IsNewer(latest.TagName, AppServices.Version)
+                ? $"Доступна версия {latest.TagName.TrimStart('v', 'V')}. Обновиться можно баннером в шапке."
+                : "Установлена последняя версия.";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _whatsNewLoaded = false;
+            WhatsNewStatus.Text = "Не удалось загрузить релизы: " + ex.Message;
+        }
+    }
+
+    private static string Truncate(string text, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+        return text.Length <= limit ? text : text[..limit].TrimEnd() + "…";
+    }
 
     private async void OnCheckLauncherUpdate(object? sender, RoutedEventArgs e)
         => await CheckLauncherUpdateAsync(false);
@@ -1839,12 +2267,34 @@ public partial class MainWindow : Window
     {
         Dispatcher.UIThread.Post(() =>
         {
-            _log.AppendLine(text);
-            if (_log.Length > 300_000)
-                _log.Remove(0, 150_000);
+            var entry = new LogEntry(text, LogEntry.Classify(text));
+            _logEntries.Add(entry);
 
-            LogBox.Text = _log.ToString();
-            LogBox.CaretIndex = LogBox.Text.Length;
+            var trimmed = false;
+            if (_logEntries.Count > 8000)
+            {
+                _logEntries.RemoveRange(0, _logEntries.Count - 8000);
+                trimmed = true;
+            }
+
+            try
+            {
+                _logWriter?.WriteLine($"{DateTime.Now:HH:mm:ss} {text}");
+            }
+            catch (IOException)
+            {
+            }
+
+            if (trimmed)
+            {
+                RebuildLogView();
+            }
+            else if (MatchesLogFilter(entry))
+            {
+                _visibleLog.Add(entry);
+                UpdateLogCount();
+                LogList.ScrollIntoView(_visibleLog[^1]);
+            }
         });
     }
 

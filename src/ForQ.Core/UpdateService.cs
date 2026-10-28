@@ -37,6 +37,23 @@ public sealed class UpdateService
         }
     }
 
+    public async Task<IReadOnlyList<GitHubRelease>> GetReleasesAsync(int count, CancellationToken ct)
+    {
+        try
+        {
+            return await _http.GetJsonAsync<List<GitHubRelease>>(
+                $"https://api.github.com/repos/{Repository}/releases?per_page={Math.Clamp(count, 1, 30)}", ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return Array.Empty<GitHubRelease>();
+        }
+    }
+
     public static GitHubAsset? PickAsset(GitHubRelease release)
         => release.Assets.FirstOrDefault(a => a.Name.EndsWith("-win-x64.exe", StringComparison.OrdinalIgnoreCase))
            ?? release.Assets.FirstOrDefault();

@@ -26,23 +26,29 @@
 
                 <TextBlock Grid.Row="1" Text="ПРОФИЛИ" Classes="section" Margin="2,0,0,10" />
 
-                <ListBox Grid.Row="2" x:Name="InstanceList" SelectionChanged="OnInstanceSelected">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Classes="muted">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0} · {1}">
-                                            <Binding Path="MinecraftVersion" />
-                                            <Binding Path="LoaderName" />
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <Grid Grid.Row="2">
+                    <ListBox x:Name="InstanceList" SelectionChanged="OnInstanceSelected">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Classes="muted">
+                                        <TextBlock.Text>
+                                            <MultiBinding StringFormat="{}{0} · {1}">
+                                                <Binding Path="MinecraftVersion" />
+                                                <Binding Path="LoaderName" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock x:Name="NoProfilesText" Classes="hint" IsVisible="False"
+                               Text="Профилей пока нет. Нажмите «+ Новый профиль» и выберите версию игры."
+                               TextWrapping="Wrap" TextAlignment="Center"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="14" />
+                </Grid>
 
                 <Button Grid.Row="3" Classes="ghost" Content="+  Новый профиль"
                         Click="OnNewInstance" HorizontalAlignment="Stretch" Margin="0,12,0,0" />
@@ -58,8 +64,10 @@
                     <TextBlock x:Name="TitleText" Text="Нет профиля" Classes="title" />
                     <TextBlock x:Name="SubtitleText" Classes="muted" Text="Создайте профиль, чтобы начать" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <TextBox x:Name="UsernameBox" Width="140" PlaceholderText="Ник" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <ComboBox x:Name="UsernameBox" Width="150" SelectionChanged="OnUsernameChanged"
+                              ToolTip.Tip="Ник для оффлайн-входа" />
+                    <Button Content="Настройки профиля" Classes="ghost" Click="OnInstanceSettings" />
                     <Button x:Name="PlayButton" Classes="accent" Content="Играть" Click="OnPlay" />
                 </StackPanel>
             </Grid>
@@ -82,41 +90,58 @@
                 <TabItem Header="Игра">
                     <Grid RowDefinitions="Auto,*,Auto">
                         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="18" Margin="0,0,0,12">
-                            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
-                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                                    <TextBlock Text="ПАМЯТЬ" Classes="section" />
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock x:Name="MemoryText" Text="4096 МБ" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        <Button Content="Подобрать" Classes="ghost" FontSize="11" Padding="8,2" Click="OnRecommendMemory" />
-                                    </StackPanel>
-                                    <TextBlock x:Name="MemoryHint" Classes="hint" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="РАЗРЕШЕНИЕ" Classes="section" />
-                                    <ComboBox x:Name="ResolutionBox" SelectionChanged="OnResolutionChanged" />
-                                    <TextBlock x:Name="ResolutionText" Text="1280 × 720" Classes="hint" />
-                                    <StackPanel x:Name="CustomResolutionPanel" Orientation="Horizontal" Spacing="6" IsVisible="False">
-                                        <TextBox x:Name="WidthBox" Width="70" PlaceholderText="ширина" KeyDown="OnCustomResolutionKey" />
-                                        <TextBox x:Name="HeightBox" Width="70" PlaceholderText="высота" KeyDown="OnCustomResolutionKey" />
-                                    </StackPanel>
-                                </StackPanel>
-                                <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="5">
                                     <TextBlock Text="ПРОФИЛЬ" Classes="section" />
-                                    <TextBlock x:Name="ProfileInfoText" Text="—" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="ProfileSummaryText" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="ProfileDetailsText" Classes="muted" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="ProfilePathText" Classes="hint" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <Slider x:Name="MemorySlider" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0"
-                                        Minimum="1024" Maximum="16384" TickFrequency="512" IsSnapToTickEnabled="True"
-                                        Value="4096" ValueChanged="OnMemoryChanged" />
+                                <Button Grid.Column="1" Content="Настройки профиля" VerticalAlignment="Center" Click="OnInstanceSettings" />
                             </Grid>
                         </Border>
 
                         <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="16">
-                            <Grid RowDefinitions="Auto,*">
-                                <TextBlock Grid.Row="0" Text="ЖУРНАЛ" Classes="section" Margin="0,0,0,10" />
-                                <TextBox Grid.Row="1" x:Name="LogBox" Classes="mono" IsReadOnly="True"
-                                         AcceptsReturn="True" TextWrapping="NoWrap"
-                                         Background="Transparent" BorderThickness="0" Padding="0"
-                                         VerticalContentAlignment="Top" />
+                            <Grid RowDefinitions="Auto,Auto,*">
+                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" Margin="0,0,0,8">
+                                    <TextBlock Text="ЖУРНАЛ" Classes="section" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" x:Name="LogFilterBox" PlaceholderText="Фильтр по строкам"
+                                             TextChanged="OnLogFilterChanged" />
+                                    <ComboBox Grid.Column="2" x:Name="LogLevelBox" Width="175"
+                                              SelectionChanged="OnLogLevelChanged" />
+                                    <TextBlock Grid.Column="3" x:Name="LogCountText" Classes="hint" VerticalAlignment="Center" />
+                                </Grid>
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
+                                    <Button Content="Копировать" Classes="ghost" FontSize="11" Padding="8,2" Click="OnCopyLog" />
+                                    <Button Content="Сохранить в файл" Classes="ghost" FontSize="11" Padding="8,2" Click="OnSaveLog" />
+                                    <Button Content="Открыть папку логов" Classes="ghost" FontSize="11" Padding="8,2" Click="OnOpenLogs" />
+                                </StackPanel>
+                                <Grid Grid.Row="2">
+                                    <ListBox x:Name="LogList" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                        <ListBox.Styles>
+                                            <Style Selector="ListBoxItem">
+                                                <Setter Property="Padding" Value="4,0" />
+                                                <Setter Property="MinHeight" Value="0" />
+                                            </Style>
+                                        </ListBox.Styles>
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <VirtualizingStackPanel />
+                                            </ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}"
+                                                           FontFamily="Consolas,Menlo,Monospace" FontSize="12"
+                                                           TextWrapping="NoWrap" />
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock x:Name="LogEmptyText" Classes="hint" IsVisible="False"
+                                               Text="Журнал пуст. Запустите игру или установите контент — здесь появятся строки."
+                                               TextWrapping="Wrap" TextAlignment="Center"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
+                                </Grid>
                             </Grid>
                         </Border>
 
@@ -191,6 +216,9 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                            <TextBlock Grid.Row="0" x:Name="ResultsEmptyText" IsVisible="False"
+                                       Classes="hint" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
                             <Button Grid.Row="1" x:Name="SearchMoreButton" Content="Показать ещё" Classes="ghost"
                                     HorizontalAlignment="Center" Margin="0,8,0,0" IsVisible="False" Click="OnLoadMoreContent" />
                         </Grid>
@@ -208,7 +236,7 @@
                                     <ListBox x:Name="InstalledList">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
                                                     <CheckBox Grid.RowSpan="2" Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}"
                                                               Click="OnInstalledToggle" VerticalAlignment="Center" />
                                                     <Border Grid.RowSpan="2" Grid.Column="1" Width="30" Height="30" CornerRadius="7"
@@ -222,7 +250,9 @@
                                                     <Button Grid.Column="3" Grid.RowSpan="2" Content="Обновить" FontSize="11"
                                                             Padding="8,3" IsVisible="{Binding UpdateAvailable}" Click="OnUpdateOne"
                                                             VerticalAlignment="Center" />
-                                                    <Button Grid.Column="4" Grid.RowSpan="2" Content="{Binding DeleteLabel}" FontSize="10"
+                                                    <Button Grid.Column="4" Grid.RowSpan="2" Content="{Binding PinLabel}" FontSize="10"
+                                                            Padding="6,3" Classes="ghost" Click="OnTogglePin" VerticalAlignment="Center" />
+                                                    <Button Grid.Column="5" Grid.RowSpan="2" Content="{Binding DeleteLabel}" FontSize="10"
                                                             Padding="6,3" Classes="ghost" Click="OnDeleteInstalled" VerticalAlignment="Center" />
                                                 </Grid>
                                             </DataTemplate>
@@ -266,14 +296,67 @@
                                         <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding Meta}" Classes="hint" />
                                         <StackPanel Grid.Column="2" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="5">
                                             <Button Content="Установить" Classes="accent" Click="OnInstallModpack" FontSize="12" Padding="12,6" />
+                                            <Button Content="В профиль" Classes="ghost" Click="OnInstallModpackIntoProfile"
+                                                    FontSize="11" Padding="8,4"
+                                                    ToolTip.Tip="Добавить сборку в текущий профиль" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                            <TextBlock Grid.Row="0" x:Name="ModpackEmptyText" IsVisible="False"
+                                       Classes="hint" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
                             <Button Grid.Row="1" x:Name="ModpackMoreButton" Content="Показать ещё" Classes="ghost"
                                     HorizontalAlignment="Center" Margin="0,8,0,0" IsVisible="False" Click="OnLoadMoreModpacks" />
                         </Grid>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="Что нового">
+                    <Grid RowDefinitions="Auto,Auto,*">
+                        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,10">
+                            <TextBlock x:Name="WhatsNewTitle" Classes="title" Text="ForQ Launcher" />
+                            <TextBlock x:Name="WhatsNewMeta" Classes="muted" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
+                            <Button Content="Открыть релиз на GitHub" Classes="ghost" Click="OnOpenReleasePage" />
+                            <Button Content="Проверить обновления" Classes="ghost" Click="OnCheckLauncherUpdate" />
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Spacing="14">
+                                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="18">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="ЧТО НОВОГО" Classes="section" />
+                                        <TextBlock x:Name="WhatsNewBody" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel x:Name="PreviousReleasesBlock" Spacing="8" IsVisible="False">
+                                    <TextBlock Text="ПРЕДЫДУЩИЕ РЕЛИЗЫ" Classes="section" />
+                                    <ItemsControl x:Name="PreviousReleasesList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="10"
+                                                        Padding="14" Margin="0,0,0,8">
+                                                    <StackPanel Spacing="4">
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Meta}" Classes="hint" />
+                                                        </Grid>
+                                                        <TextBlock Text="{Binding Body}" Classes="muted" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <TextBlock x:Name="WhatsNewStatus" Classes="hint" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
                 </TabItem>
 

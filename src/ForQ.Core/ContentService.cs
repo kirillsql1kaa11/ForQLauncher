@@ -44,7 +44,7 @@ public sealed class ContentService
     }
 
     public async Task<string> InstallAsync(Instance instance, ModrinthVersion version, ContentKind kind, ContentSource source,
-        CancellationToken ct, IProgress<DownloadState>? progress = null)
+        CancellationToken ct, IProgress<DownloadState>? progress = null, string versionChannel = "release")
     {
         var file = ModrinthService.PrimaryFile(version);
         var directory = Path.Combine(instance.Folder, FolderFor(kind));
@@ -83,6 +83,7 @@ public sealed class ContentService
             Title = source.Title,
             IconUrl = source.IconUrl,
             Sha1 = file.Hashes.GetValueOrDefault("sha1", ""),
+            VersionChannel = NormalizeChannel(versionChannel),
             InstalledAt = DateTimeOffset.Now
         };
 
@@ -100,9 +101,10 @@ public sealed class ContentService
         ContentSource source,
         ModrinthService modrinth,
         CancellationToken ct,
-        IProgress<DownloadState>? progress = null)
+        IProgress<DownloadState>? progress = null,
+        string versionChannel = "release")
     {
-        await InstallAsync(instance, version, kind, source, ct, progress);
+        await InstallAsync(instance, version, kind, source, ct, progress, versionChannel);
 
         var projectType = TypeOf(kind);
         var dependencies = version.Dependencies
@@ -175,7 +177,9 @@ public sealed class ContentService
                     VersionId = record?.VersionId ?? "",
                     VersionNumber = record?.VersionNumber ?? "",
                     Title = record?.Title ?? "",
-                    IconUrl = record?.IconUrl
+                    IconUrl = record?.IconUrl,
+                    VersionChannel = record?.VersionChannel ?? "release",
+                    Pinned = record?.Pinned ?? false
                 });
             }
         }
@@ -230,6 +234,52 @@ public sealed class ContentService
                 GameOptions.SetShader(instance.OptionsPath, enabled ? content.FileName : null);
                 break;
         }
+    }
+
+    public ContentRecord? FindRecord(Instance instance, string projectId, ContentKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(projectId))
+            return null;
+
+        return LoadLibrary(instance).Items.FirstOrDefault(record =>
+            record.Kind == kind && string.Equals(record.ProjectId, projectId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public void SetChannel(Instance instance, string projectId, ContentKind kind, string channel)
+    {
+        var library = LoadLibrary(instance);
+        var record = library.Items.FirstOrDefault(item =>
+            item.Kind == kind && string.Equals(item.ProjectId, projectId, StringComparison.OrdinalIgnoreCase));
+        if (record is null)
+            return;
+
+        record.VersionChannel = NormalizeChannel(channel);
+        SaveLibrary(instance, library);
+    }
+
+    public void SetPinned(Instance instance, InstalledContent content, bool pinned)
+    {
+        var library = LoadLibrary(instance);
+        var record = library.Items.FirstOrDefault(item =>
+            item.Kind == content.Kind && string.Equals(item.FileName, content.FileName, StringComparison.OrdinalIgnoreCase));
+
+        if (record is null)
+        {
+            record = new ContentRecord
+            {
+                FileName = content.FileName,
+                Kind = content.Kind,
+                ProjectId = content.ProjectId,
+                VersionId = content.VersionId,
+                VersionNumber = content.VersionNumber,
+                Title = content.Title,
+                IconUrl = content.IconUrl
+            };
+            library.Items.Add(record);
+        }
+
+        record.Pinned = pinned;
+        SaveLibrary(instance, library);
     }
 
     public async Task<InstalledContent> ImportAsync(Instance instance, string sourcePath, CancellationToken ct)
@@ -309,18 +359,35 @@ public sealed class ContentService
 
                 identified.Add((pair.Value, currentVersion));
 
-                if (!latest.TryGetValue(pair.Key, out var latestVersion))
+                var record = library.Items.FirstOrDefault(r =>
+                    r.Kind == pair.Value.Kind && string.Equals(r.FileName, pair.Value.FileName, StringComparison.OrdinalIgnoreCase));
+
+                if (record?.Pinned == true)
                     continue;
 
-                if (latestVersion.Id == currentVersion.Id)
+                var channel = record?.VersionChannel ?? "release";
+                ModrinthVersion? latestVersion = null;
+
+                if (latest.TryGetValue(pair.Key, out var bulkVersion)
+                    && ModrinthService.AllowsVersionType(channel, bulkVersion.VersionType))
+                {
+                    latestVersion = bulkVersion;
+                }
+
+                latestVersion ??= await modrinth.PickVersionAsync(
+                    currentVersion.ProjectId,
+                    instance.MinecraftVersion,
+                    pair.Value.Kind == ContentKind.Mod ? LoaderTag(instance) : null,
+                    ct,
+                    channel);
+
+                if (latestVersion is null || latestVersion.Id == currentVersion.Id)
                     continue;
 
                 if (latestVersion.DatePublished < currentVersion.DatePublished)
                     continue;
 
                 var projectId = latestVersion.ProjectId;
-                var record = library.Items.FirstOrDefault(r =>
-                    r.Kind == pair.Value.Kind && string.Equals(r.FileName, pair.Value.FileName, StringComparison.OrdinalIgnoreCase));
 
                 updates.Add(new ContentUpdate
                 {
@@ -421,6 +488,11 @@ public sealed class ContentService
         }
 
         var library = LoadLibrary(instance);
+        var previous = library.Items.FirstOrDefault(r =>
+            r.Kind == update.Content.Kind
+            && (string.Equals(r.FileName, update.Content.FileName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(r.FileName, file.Filename, StringComparison.OrdinalIgnoreCase)));
+
         library.Items.RemoveAll(r => r.Kind == update.Content.Kind
                                      && (string.Equals(r.FileName, update.Content.FileName, StringComparison.OrdinalIgnoreCase)
                                          || string.Equals(r.FileName, file.Filename, StringComparison.OrdinalIgnoreCase)));
@@ -435,14 +507,18 @@ public sealed class ContentService
             Title = string.IsNullOrWhiteSpace(update.Title) ? update.Content.Title : update.Title,
             IconUrl = update.IconUrl ?? update.Content.IconUrl,
             Sha1 = file.Hashes.GetValueOrDefault("sha1", ""),
+            VersionChannel = previous?.VersionChannel ?? update.Content.VersionChannel,
+            Pinned = previous?.Pinned ?? update.Content.Pinned,
             InstalledAt = DateTimeOffset.Now
         });
 
         SaveLibrary(instance, library);
     }
 
-    private static string UniqueFileName(string directory, string fileName)
-    {
+    private static string NormalizeChannel(string? channel)
+        => channel is "beta" or "alpha" ? channel : "release";
+
+    private static string UniqueFileName(string directory, string fileName)    {
         if (!File.Exists(Path.Combine(directory, fileName)))
             return fileName;
 

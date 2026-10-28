@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using ForQ.Core;
 
@@ -91,19 +92,23 @@ public sealed class InstalledItem : ObservableBase
     private Bitmap? _icon;
     private bool _updateAvailable;
     private bool _confirmDelete;
-    private string _versionNumber = "";
+    private bool _pinned;
+    private string _subtitle = "";
 
     public InstalledItem(InstalledContent content)
     {
         Content = content;
-        _versionNumber = content.VersionLabel;
+        _pinned = content.Pinned;
+        UpdateSubtitle(content.VersionLabel);
     }
 
     public InstalledContent Content { get; }
     public string FileName => Content.FileName;
     public string Title => Content.DisplayName;
-    public string Subtitle => _versionNumber;
+    public string Subtitle => _subtitle;
     public bool Enabled => Content.Enabled;
+    public bool Pinned => _pinned;
+    public string PinLabel => _pinned ? "Открепить" : "Закрепить";
 
     public Bitmap? Icon
     {
@@ -129,14 +134,101 @@ public sealed class InstalledItem : ObservableBase
 
     public string DeleteLabel => _confirmDelete ? "Точно?" : "Удалить";
 
-    public void SetVersion(string label)
+    public void SetVersion(string label) => UpdateSubtitle(label);
+
+    public void SetPinned(bool pinned)
     {
-        _versionNumber = label;
+        if (!Set(ref _pinned, pinned, nameof(Pinned)))
+            return;
+
+        Raise(nameof(PinLabel));
+        UpdateSubtitle(Content.VersionLabel);
+    }
+
+    private void UpdateSubtitle(string versionLabel)
+    {
+        var parts = new List<string> { versionLabel };
+        if (Content.VersionChannel != "release")
+            parts.Add(Content.ChannelName);
+        if (_pinned)
+            parts.Add("закреплено");
+
+        _subtitle = string.Join(" · ", parts);
         Raise(nameof(Subtitle));
     }
 
     public async Task LoadIconAsync(CancellationToken ct)
         => Icon = await ImageCache.LoadAsync(Content.IconUrl, ct);
+}
+
+public sealed class GalleryItem
+{
+    public required string Url { get; init; }
+    public string? Title { get; init; }
+    public Bitmap? Image { get; set; }
+}
+
+public sealed class ReleaseNoteItem
+{
+    public string Title { get; init; } = "";
+    public string Meta { get; init; } = "";
+    public string Body { get; init; } = "";
+}
+
+public enum LogLevel
+{
+    Info,
+    Mod,
+    Warning,
+    Error
+}
+
+public sealed class LogEntry
+{
+    private static readonly IBrush InfoBrush = new SolidColorBrush(Color.Parse("#E7EBF2"));
+    private static readonly IBrush ModBrush = new SolidColorBrush(Color.Parse("#7DD482"));
+    private static readonly IBrush WarningBrush = new SolidColorBrush(Color.Parse("#E0B25B"));
+    private static readonly IBrush ErrorBrush = new SolidColorBrush(Color.Parse("#E0575B"));
+
+    public LogEntry(string text, LogLevel level)
+    {
+        Text = text;
+        Level = level;
+    }
+
+    public string Text { get; }
+    public LogLevel Level { get; }
+
+    public IBrush Brush => Level switch
+    {
+        LogLevel.Error => ErrorBrush,
+        LogLevel.Warning => WarningBrush,
+        LogLevel.Mod => ModBrush,
+        _ => InfoBrush
+    };
+
+    public static LogLevel Classify(string text)
+    {
+        if (text.Contains("error", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("exception", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("fatal", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("ошибка", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("краш", StringComparison.OrdinalIgnoreCase))
+            return LogLevel.Error;
+
+        if (text.Contains("warn", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("предупрежд", StringComparison.OrdinalIgnoreCase))
+            return LogLevel.Warning;
+
+        if (text.Contains(".jar", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("fabric", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("quilt", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("neoforge", StringComparison.OrdinalIgnoreCase))
+            return LogLevel.Mod;
+
+        return LogLevel.Info;
+    }
 }
 
 public static class Format

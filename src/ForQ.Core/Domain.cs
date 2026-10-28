@@ -26,6 +26,7 @@ public sealed class Instance
     [JsonPropertyName("loaderVersion")] public string LoaderVersion { get; set; } = "";
     [JsonPropertyName("profileId")] public string ProfileId { get; set; } = "";
     [JsonPropertyName("username")] public string Username { get; set; } = "Player";
+    [JsonPropertyName("usernames")] public List<string> Usernames { get; set; } = new();
     [JsonPropertyName("memoryMb")] public int MemoryMb { get; set; } = 4096;
     [JsonPropertyName("width")] public int Width { get; set; } = 1280;
     [JsonPropertyName("height")] public int Height { get; set; } = 720;
@@ -75,6 +76,15 @@ public sealed class InstalledContent
     public string VersionNumber { get; init; } = "";
     public string Title { get; init; } = "";
     public string? IconUrl { get; init; }
+    public string VersionChannel { get; init; } = "release";
+    public bool Pinned { get; init; }
+
+    [JsonIgnore] public string ChannelName => VersionChannel switch
+    {
+        "alpha" => "все версии",
+        "beta" => "стабильные и бета",
+        _ => "стабильные"
+    };
 
     [JsonIgnore] public string KindName => Kind switch
     {
@@ -98,6 +108,8 @@ public sealed class ContentRecord
     [JsonPropertyName("title")] public string Title { get; set; } = "";
     [JsonPropertyName("iconUrl")] public string? IconUrl { get; set; }
     [JsonPropertyName("sha1")] public string Sha1 { get; set; } = "";
+    [JsonPropertyName("versionChannel")] public string VersionChannel { get; set; } = "release";
+    [JsonPropertyName("pinned")] public bool Pinned { get; set; }
     [JsonPropertyName("installedAt")] public DateTimeOffset InstalledAt { get; set; } = DateTimeOffset.Now;
 }
 

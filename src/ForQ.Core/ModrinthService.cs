@@ -103,12 +103,14 @@ public sealed class ModrinthService
         string projectId,
         string gameVersion,
         string? loader,
-        CancellationToken ct)
+        CancellationToken ct,
+        string channel = "release")
     {
         var versions = await GetVersionsAsync(projectId, ct);
 
         var candidates = versions
             .Where(v => v.GameVersions.Count == 0 || v.GameVersions.Contains(gameVersion))
+            .Where(v => AllowsVersionType(channel, v.VersionType))
             .ToList();
 
         if (!string.IsNullOrEmpty(loader))
@@ -119,8 +121,7 @@ public sealed class ModrinthService
         }
 
         return candidates
-            .OrderByDescending(v => v.VersionType == "release")
-            .ThenByDescending(v => v.DatePublished)
+            .OrderByDescending(v => v.DatePublished)
             .FirstOrDefault();
     }
 
@@ -129,10 +130,30 @@ public sealed class ModrinthService
         string gameVersion,
         string? loader,
         string projectType,
-        CancellationToken ct)
+        CancellationToken ct,
+        string channel = "release")
     {
         var effectiveLoader = projectType == "mod" ? loader : null;
-        return await PickVersionAsync(projectId, gameVersion, effectiveLoader, ct);
+        return await PickVersionAsync(projectId, gameVersion, effectiveLoader, ct, channel);
+    }
+
+    public static bool AllowsVersionType(string? channel, string? versionType)
+    {
+        var maximum = channel switch
+        {
+            "alpha" => 2,
+            "beta" => 1,
+            _ => 0
+        };
+
+        var rank = versionType switch
+        {
+            "beta" => 1,
+            "alpha" => 2,
+            _ => 0
+        };
+
+        return rank <= maximum;
     }
 
     public async Task<Dictionary<string, ModrinthVersion>> GetVersionsByHashesAsync(

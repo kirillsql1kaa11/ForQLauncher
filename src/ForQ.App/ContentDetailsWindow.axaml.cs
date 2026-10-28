@@ -22,6 +22,8 @@ public partial class ContentDetailsWindow : Window
     private ModrinthVersion? _version;
     private bool _installed;
     private bool _projectInstalled;
+    private string _channel = "release";
+    private bool _suppressChannel;
 
     public ContentDetailsWindow() : this(string.Empty, "mod", null)
     {
@@ -33,6 +35,10 @@ public partial class ContentDetailsWindow : Window
         _projectId = projectId;
         _projectType = projectType;
         _instance = instance;
+
+        if (_instance is not null && _projectType != "modpack")
+            _channel = _services.Content.FindRecord(_instance, _projectId, KindOf(_projectType))?.VersionChannel ?? "release";
+
         Opened += OnOpened;
         Closed += OnClosed;
     }
@@ -46,7 +52,24 @@ public partial class ContentDetailsWindow : Window
         _ => "Проект"
     };
 
-    private void OnOpened(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnOpened(object? sender, EventArgs e)
+    {
+        ConfigureChannelBox();
+        _ = LoadAsync();
+    }
+
+    private void ConfigureChannelBox()
+    {
+        _suppressChannel = true;
+        ChannelBox.ItemsSource = new[] { "Только стабильные", "Стабильные и бета", "Все версии" };
+        ChannelBox.SelectedIndex = _channel switch
+        {
+            "alpha" => 2,
+            "beta" => 1,
+            _ => 0
+        };
+        _suppressChannel = false;
+    }
 
     private void OnClosed(object? sender, EventArgs e) => _cts.Cancel();
 
@@ -74,6 +97,7 @@ public partial class ContentDetailsWindow : Window
             HeroImage.Source = hero ?? IconImage.Source;
             HeroImage.Stretch = hero is null ? Stretch.Uniform : Stretch.UniformToFill;
 
+            await LoadGalleryAsync(details);
             await LoadVersionAsync();
 
             if (_projectType == "modpack")
@@ -120,20 +144,20 @@ public partial class ContentDetailsWindow : Window
             var versions = await _services.Modrinth.GetVersionsAsync(_projectId, _cts.Token);
             _version = versions
                 .Where(v => v.Files.Count > 0)
-                .OrderByDescending(v => v.VersionType == "release")
-                .ThenByDescending(v => v.DatePublished)
+                .Where(v => ModrinthService.AllowsVersionType(_channel, v.VersionType))
+                .OrderByDescending(v => v.DatePublished)
                 .FirstOrDefault();
         }
         else
         {
             _version = await _services.Modrinth.PickVersionAsync(
-                _projectId, _instance.MinecraftVersion, LoaderTag(), _projectType, _cts.Token);
+                _projectId, _instance.MinecraftVersion, LoaderTag(), _projectType, _cts.Token, _channel);
         }
 
         if (_version is null)
         {
             InstallButton.IsEnabled = false;
-            StatusText.Text = $"Нет версии под {_instance.MinecraftVersion}";
+            StatusText.Text = $"Нет версии под {_instance.MinecraftVersion} в канале «{ChannelLabel}»";
             return;
         }
 
@@ -154,6 +178,69 @@ public partial class ContentDetailsWindow : Window
         if (_instance is null || _projectType == "modpack")
             return false;
         return _services.Content.InstalledProjectIds(_instance, KindOf(_projectType)).Contains(_projectId);
+    }
+
+    private string ChannelLabel => _channel switch
+    {
+        "alpha" => "все версии",
+        "beta" => "стабильные и бета",
+        _ => "только стабильные"
+    };
+
+    private async void OnChannelChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressChannel)
+            return;
+
+        _channel = ChannelBox.SelectedIndex switch
+        {
+            2 => "alpha",
+            1 => "beta",
+            _ => "release"
+        };
+
+        if (_instance is not null && _projectType != "modpack" && _projectInstalled)
+        {
+            _services.Content.SetChannel(_instance, _projectId, KindOf(_projectType), _channel);
+            StatusText.Text = $"Канал сохранён: {ChannelLabel}. Следующая проверка обновлений учтёт его.";
+            return;
+        }
+
+        await LoadVersionAsync();
+    }
+
+    private async Task LoadGalleryAsync(ModrinthProjectDetails details)
+    {
+        var images = details.Gallery
+            .Where(image => !string.IsNullOrWhiteSpace(image.Url))
+            .Take(10)
+            .ToList();
+
+        if (images.Count < 2)
+        {
+            GalleryScroll.IsVisible = false;
+            return;
+        }
+
+        var items = images
+            .Select(image => new GalleryItem { Url = image.Url, Title = image.Title ?? image.Description })
+            .ToList();
+
+        await Task.WhenAll(items.Select(async item =>
+            item.Image = await ImageCache.LoadAsync(item.Url, _cts.Token)));
+
+        var loaded = items.Where(item => item.Image is not null).ToList();
+        GalleryList.ItemsSource = loaded;
+        GalleryScroll.IsVisible = loaded.Count > 1;
+    }
+
+    private void OnGalleryClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: GalleryItem item } || item.Image is null)
+            return;
+
+        HeroImage.Source = item.Image;
+        HeroImage.Stretch = Stretch.UniformToFill;
     }
 
     private async Task LoadDependenciesAsync()
@@ -283,10 +370,10 @@ public partial class ContentDetailsWindow : Window
                 var kind = KindOf(_projectType);
                 var source = new ContentSource(_projectId, _details?.Title ?? _projectId, _details?.IconUrl);
                 await _services.Content.InstallWithDependenciesAsync(
-                    _instance, _version, kind, source, _services.Modrinth, _cts.Token, progress);
+                    _instance, _version, kind, source, _services.Modrinth, _cts.Token, progress, _channel);
 
                 _installed = true;
-                StatusText.Text = $"Установлено в {ContentService.FolderFor(kind)}";
+                StatusText.Text = $"Установлено в {ContentService.FolderFor(kind)} · канал: {ChannelLabel}";
             }
 
             if (_projectType != "modpack")

@@ -23,6 +23,27 @@
                     <Image x:Name="HeroImage" Stretch="UniformToFill" />
                 </Border>
 
+                <ScrollViewer x:Name="GalleryScroll" HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled" IsVisible="False">
+                    <ItemsControl x:Name="GalleryList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Classes="ghost" Padding="0" Click="OnGalleryClick" ToolTip.Tip="{Binding Title}">
+                                    <Border Width="104" Height="60" CornerRadius="7" ClipToBounds="True"
+                                            Background="{StaticResource SurfaceAltBrush}">
+                                        <Image Source="{Binding Image}" Stretch="UniformToFill" />
+                                    </Border>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
                 <TextBlock x:Name="BadgesText" Classes="hint" TextWrapping="Wrap" />
 
                 <TextBlock x:Name="DescriptionText" FontSize="14" TextWrapping="Wrap" Text="Переводим описание..." />
@@ -67,7 +88,11 @@
         </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" Margin="24,14,24,20">
-            <StackPanel Grid.Column="0" Spacing="5" VerticalAlignment="Center" Margin="0,0,12,0">
+            <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Center" Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="КАНАЛ ВЕРСИЙ" Classes="section" VerticalAlignment="Center" />
+                    <ComboBox x:Name="ChannelBox" Width="210" SelectionChanged="OnChannelChanged" />
+                </StackPanel>
                 <TextBlock x:Name="StatusText" Classes="hint" TextWrapping="Wrap" Text="Готово" />
                 <ProgressBar x:Name="Progress" IsVisible="False" />
             </StackPanel>
