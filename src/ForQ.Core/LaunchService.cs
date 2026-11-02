@@ -74,7 +74,7 @@ public sealed class LaunchService
         return chain;
     }
 
-    public async Task<LaunchPlan> BuildPlanAsync(Instance instance, AppSettings settings, Action<string>? log, CancellationToken ct)
+    public async Task<LaunchPlan> BuildPlanAsync(Instance instance, AppSettings settings, Action<string>? log, CancellationToken ct, ElySession? ely = null)
     {
         var chain = await LoadChainAsync(instance, ct);
 
@@ -168,20 +168,23 @@ public sealed class LaunchService
             ? string.Join(Path.PathSeparator, nativeDirectories)
             : nativesRoot;
 
+        var playerUuid = ely?.Uuid ?? OfflineUuid(instance.Username);
+        var accessToken = ely?.AccessToken ?? "0";
+
         var placeholders = new Dictionary<string, string>
         {
-            ["auth_player_name"] = instance.Username,
+            ["auth_player_name"] = ely?.Name ?? instance.Username,
             ["version_name"] = instance.ProfileId,
             ["game_directory"] = instance.Folder,
             ["assets_root"] = Path.Combine(instance.RootPath, "shared", "assets"),
             ["assets_index_name"] = assetIndex?.Id ?? "",
-            ["auth_uuid"] = OfflineUuid(instance.Username),
-            ["auth_access_token"] = "0",
-            ["auth_session"] = "token:0:" + OfflineUuid(instance.Username),
+            ["auth_uuid"] = playerUuid,
+            ["auth_access_token"] = accessToken,
+            ["auth_session"] = "token:" + accessToken + ":" + playerUuid,
             ["clientid"] = "",
             ["client_id"] = "",
             ["auth_xuid"] = "",
-            ["user_type"] = "legacy",
+            ["user_type"] = ely is { Authenticated: true } ? "mojang" : "legacy",
             ["version_type"] = versionType,
             ["resolution_width"] = instance.Width.ToString(),
             ["resolution_height"] = instance.Height.ToString(),
@@ -194,7 +197,10 @@ public sealed class LaunchService
             ["launcher_version"] = "1.0"
         };
 
-        var jvmArguments = new List<string> { "-Xmx" + instance.MemoryMb + "M" };
+        var jvmArguments = new List<string>();
+        if (ely is not null)
+            jvmArguments.Add("-javaagent:" + ely.InjectorPath + "=" + ElyService.InjectorServer);
+        jvmArguments.Add("-Xmx" + instance.MemoryMb + "M");
         if (arguments?.Jvm is { Count: > 0 })
             jvmArguments.AddRange(ExpandArguments(arguments.Jvm));
         else
@@ -206,6 +212,8 @@ public sealed class LaunchService
             jvmArguments.Add("-Dhttp.proxyPort=9");
             jvmArguments.Add("-Dhttps.proxyHost=127.0.0.1");
             jvmArguments.Add("-Dhttps.proxyPort=9");
+            if (ely is not null)
+                jvmArguments.Add("-Dhttp.nonProxyHosts=localhost|127.*|[::1]|ely.by|*.ely.by");
         }
 
         var resolvedJvm = jvmArguments

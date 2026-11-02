@@ -28,6 +28,7 @@ public sealed class AppServices : IDisposable
         Launcher = new LaunchService(Mojang, Runtime, Downloads);
         Modpacks = new ModpackService(Instances, Installer, Downloads, Modrinth, Content);
         Updates = new UpdateService(Http, Downloads);
+        Ely = new ElyService(Http);
         Translation = new TranslationService(Http, Path.Combine(CacheDirectory, "translations.json"));
         Settings = Instances.LoadSettings();
     }
@@ -49,6 +50,7 @@ public sealed class AppServices : IDisposable
     public LaunchService Launcher { get; }
     public ModpackService Modpacks { get; }
     public UpdateService Updates { get; }
+    public ElyService Ely { get; }
     public TranslationService Translation { get; }
     public AppSettings Settings { get; }
 

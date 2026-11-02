@@ -67,6 +67,8 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <ComboBox x:Name="UsernameBox" Width="150" SelectionChanged="OnUsernameChanged"
                               ToolTip.Tip="Ник для оффлайн-входа" />
+                    <Button Content="Скины Ely.by" Classes="ghost" Click="OnOpenElySkins"
+                            ToolTip.Tip="Открыть ely.by, чтобы загрузить скин и плащ" />
                     <Button Content="Настройки профиля" Classes="ghost" Click="OnInstanceSettings" />
                     <Button x:Name="PlayButton" Classes="accent" Content="Играть" Click="OnPlay" />
                 </StackPanel>
@@ -373,6 +375,27 @@
                                 <StackPanel Spacing="6">
                                     <TextBlock Text="Свой Java (необязательно)" Classes="muted" />
                                     <TextBox x:Name="JavaPathBox" PlaceholderText="C:\...\bin\java.exe" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="СКИНЫ ELY.BY" Classes="section" />
+                                <TextBlock Classes="muted" TextWrapping="Wrap"
+                                           Text="Скины и плащи с ely.by отображаются в игре. Загрузите скин на сайте, а лаунчер подключит его при запуске. Без входа скин тоже подберется, если такой ник есть на ely.by." />
+                                <StackPanel x:Name="ElyLoginForm" Spacing="6">
+                                    <TextBox x:Name="ElyLoginBox" PlaceholderText="Логин или e-mail на ely.by" />
+                                    <TextBox x:Name="ElyPasswordBox" PasswordChar="●" PlaceholderText="Пароль (при 2FA: пароль:код)" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="ElyLoginButton" Content="Войти" Classes="accent" Click="OnElyLogin" />
+                                        <Button Content="Открыть сайт" Classes="ghost" Click="OnOpenElySkins" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel x:Name="ElyAccountPanel" Spacing="6" IsVisible="False">
+                                    <TextBlock x:Name="ElyAccountText" Classes="muted" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Выйти" Classes="ghost" Click="OnElyLogout" />
+                                        <Button Content="Открыть сайт" Classes="ghost" Click="OnOpenElySkins" />
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
 

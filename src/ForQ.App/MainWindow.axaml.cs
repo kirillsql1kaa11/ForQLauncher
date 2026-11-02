@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Net;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -113,6 +114,7 @@ public partial class MainWindow : Window
         SpeedLimitBox.Text = _services.Settings.DownloadSpeedLimitKbps.ToString();
         _services.Downloads.SpeedLimitBytesPerSecond = _services.Settings.DownloadSpeedLimitKbps * 1024L;
         AutoUpdateCheck.IsChecked = _services.Settings.AutoCheckUpdates;
+        UpdateElyUi();
 
         _ready = true;
         _ = InitializeAsync();
@@ -267,7 +269,8 @@ public partial class MainWindow : Window
             var instance = _current;
             AppendLog($"Запуск {instance.Name}...");
             _stopRequested = false;
-            var plan = await _services.Launcher.BuildPlanAsync(instance, _services.Settings, AppendLog, _cts.Token);
+            var ely = await ResolveElySessionAsync(instance);
+            var plan = await _services.Launcher.BuildPlanAsync(instance, _services.Settings, AppendLog, _cts.Token, ely);
             var game = await _services.Launcher.StartAsync(plan, AppendLog, _cts.Token);
             _game = game;
             game.EnableRaisingEvents = true;
@@ -2215,6 +2218,185 @@ public partial class MainWindow : Window
         {
             StatusText.Text = "Не удалось открыть браузер: " + ex.Message;
         }
+    }
+
+    private void OnOpenElySkins(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(ElyService.SkinsPage)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Не удалось открыть браузер: " + ex.Message;
+        }
+    }
+
+    private void UpdateElyUi()
+    {
+        var settings = _services.Settings;
+        var logged = !string.IsNullOrEmpty(settings.ElyAccessToken) && !string.IsNullOrEmpty(settings.ElyPlayerName);
+        ElyLoginForm.IsVisible = !logged;
+        ElyAccountPanel.IsVisible = logged;
+        if (logged)
+            ElyAccountText.Text = $"Аккаунт: {settings.ElyPlayerName} — скины подключаются при запуске";
+    }
+
+    private async Task<ElySession?> ResolveElySessionAsync(Instance instance)
+    {
+        var settings = _services.Settings;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+
+        string injectorPath;
+        try
+        {
+            injectorPath = await _services.Ely.EnsureInjectorAsync(_services.Root, AppendLog, timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog("Ely.by: authlib-injector не скачался (сеть?) — запускаю без скинов.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Ely.by: authlib-injector недоступен: " + ex.Message);
+            return null;
+        }
+
+        if (!string.IsNullOrEmpty(settings.ElyAccessToken) && !string.IsNullOrEmpty(settings.ElyClientToken))
+        {
+            var sessionExpired = false;
+            try
+            {
+                var refreshed = await _services.Ely.RefreshAsync(settings.ElyAccessToken!, settings.ElyClientToken!, timeout.Token);
+                settings.ElyAccessToken = refreshed.AccessToken;
+                settings.ElyPlayerId = ElyService.Dashed(refreshed.SelectedProfile.Id);
+                settings.ElyPlayerName = refreshed.SelectedProfile.Name;
+                _services.SaveSettings();
+                AppendLog($"Ely.by: вход как {refreshed.SelectedProfile.Name} — скины и плащи подключены.");
+                return new ElySession(refreshed.SelectedProfile.Name, ElyService.Dashed(refreshed.SelectedProfile.Id),
+                    refreshed.AccessToken, injectorPath, true);
+            }
+            catch (OperationCanceledException)
+            {
+                AppendLog("Ely.by: сервер не ответил — скин по нику может не подключиться.");
+            }
+            catch (Exception)
+            {
+                settings.ElyAccessToken = null;
+                _services.SaveSettings();
+                UpdateElyUi();
+                AppendLog("Ely.by: сессия истекла, нужен повторный вход в настройках. Пробую подобрать скин по нику.");
+                sessionExpired = true;
+            }
+
+            if (sessionExpired)
+            {
+                try
+                {
+                    var uuidByNick = await _services.Ely.LookupUuidAsync(instance.Username, timeout.Token);
+                    if (uuidByNick is not null)
+                        return new ElySession(instance.Username, uuidByNick, "0", injectorPath, false);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            return null;
+        }
+
+        try
+        {
+            var uuid = await _services.Ely.LookupUuidAsync(instance.Username, timeout.Token);
+            if (uuid is not null)
+            {
+                AppendLog($"Ely.by: профиль «{instance.Username}» найден — подключаю скины по нику.");
+                return new ElySession(instance.Username, uuid, "0", injectorPath, false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Ely.by: " + ex.Message);
+        }
+
+        return null;
+    }
+
+    private static string ElyErrorMessage(Exception ex)
+    {
+        if (ex is HttpRequestException http && (http.Message.Contains("401") || http.Message.Contains("400")))
+            return "Ely.by отклонил вход: проверьте логин и пароль. Если включена 2FA — введите «пароль:код».";
+        return "Ely.by: " + ex.Message;
+    }
+
+    private async void OnElyLogin(object? sender, RoutedEventArgs e)
+    {
+        var login = (ElyLoginBox.Text ?? "").Trim();
+        var password = ElyPasswordBox.Text ?? "";
+        if (string.IsNullOrEmpty(login) || string.IsNullOrEmpty(password))
+        {
+            StatusText.Text = "Введите логин и пароль ely.by";
+            return;
+        }
+
+        ElyLoginButton.IsEnabled = false;
+        StatusText.Text = "Вход в Ely.by...";
+        try
+        {
+            var settings = _services.Settings;
+            if (string.IsNullOrEmpty(settings.ElyClientToken))
+                settings.ElyClientToken = Guid.NewGuid().ToString();
+
+            var result = await _services.Ely.AuthenticateAsync(login, password, settings.ElyClientToken, CancellationToken.None);
+            settings.ElyAccessToken = result.AccessToken;
+            settings.ElyPlayerId = ElyService.Dashed(result.SelectedProfile.Id);
+            settings.ElyPlayerName = result.SelectedProfile.Name;
+            _services.SaveSettings();
+
+            ElyPasswordBox.Text = "";
+            ElyLoginBox.Text = "";
+            UpdateElyUi();
+            StatusText.Text = $"Ely.by: {result.SelectedProfile.Name} — скины подключатся при запуске";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ElyErrorMessage(ex);
+        }
+        finally
+        {
+            ElyLoginButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnElyLogout(object? sender, RoutedEventArgs e)
+    {
+        var settings = _services.Settings;
+        if (!string.IsNullOrEmpty(settings.ElyAccessToken) && !string.IsNullOrEmpty(settings.ElyClientToken))
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await _services.Ely.InvalidateAsync(settings.ElyAccessToken!, settings.ElyClientToken!, timeout.Token);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        settings.ElyAccessToken = null;
+        settings.ElyPlayerId = null;
+        settings.ElyPlayerName = null;
+        _services.SaveSettings();
+        UpdateElyUi();
+        StatusText.Text = "Аккаунт Ely.by отключен";
     }
 
     private void OnSaveSettings(object? sender, RoutedEventArgs e)

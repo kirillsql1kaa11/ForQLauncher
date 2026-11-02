@@ -55,6 +55,10 @@ public sealed class AppSettings
     [JsonPropertyName("lastInstanceId")] public string LastInstanceId { get; set; } = "";
     [JsonPropertyName("rootPath")] public string? RootPath { get; set; }
     [JsonPropertyName("autoCheckUpdates")] public bool AutoCheckUpdates { get; set; } = true;
+    [JsonPropertyName("elyAccessToken")] public string? ElyAccessToken { get; set; }
+    [JsonPropertyName("elyClientToken")] public string? ElyClientToken { get; set; }
+    [JsonPropertyName("elyPlayerId")] public string? ElyPlayerId { get; set; }
+    [JsonPropertyName("elyPlayerName")] public string? ElyPlayerName { get; set; }
 }
 
 public sealed class LoaderBuild
